@@ -118,7 +118,8 @@ dmypy.json
 
 /Bactnet
 Bactnet/
-
+_results/
+models/
 *.h5
 *.hdf5
 
