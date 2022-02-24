@@ -154,7 +154,8 @@ def unpatch_stack(patches, original_shape, DEPTH=3):
 
 # load unseen data
 
-validation_image_directory = r'C:\Users\Jens\Documents\Code\bactnet\Bactnet\Training data\stacks\predict'
+validation_image_directory = r'Bactnet\Training data\stacks\validation_source'
+validation_mask_directory = r'Bactnet\Training data\stacks\validation_target'
 
 val_image_dataset = []
 pred_mask_dataset = []
