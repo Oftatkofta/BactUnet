@@ -18,7 +18,7 @@ def patch_image(img, SIZE=288):
     #patches.shape = (8, 8, 288, 288)
 
     #return.shape = (64, 288 ,288)
-    return patches.reshape(patches.shape[0]*patches.shape[1], SIZE, SIZE, 1)
+    return patches.reshape(patches.shape[0]*patches.shape[1], 1, SIZE, SIZE)
 
 
 def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
