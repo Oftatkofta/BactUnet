@@ -16,9 +16,8 @@ def patch_image(img, SIZE=288):
     # img.shape = (2304, 2304)
     patches = patchify(img, patch_size=(SIZE, SIZE), step=(SIZE, SIZE))
     #patches.shape = (8, 8, 288, 288)
-
-    #return.shape = (64, 288 ,288)
-    return patches.reshape(patches.shape[0]*patches.shape[1], 1, SIZE, SIZE)
+    #return.shape = (64, 1, 288 ,288)
+    return patches.reshape(patches.shape[0]*patches.shape[1], -1, SIZE, SIZE)
 
 
 def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
@@ -29,6 +28,26 @@ def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
 
     # return.shape = (64, 3, 288 ,288)
     return patches.reshape(patches.shape[0] * patches.shape[1] * patches.shape[2], -1,  SIZE, SIZE)
+
+
+def unpatch_stack(patches, original_shape, DEPTH=3):
+    n_frames = original_shape[0] - (DEPTH - 1)
+    side_length = int(math.sqrt(patches.shape[0] / n_frames))
+    patches = patches.reshape(n_frames, side_length, side_length, DEPTH, patches.shape[2], -1)
+
+    return unpatchify(patches, original_shape)
+
+
+def pad_image_arr(arr, SIZE):
+    """
+    Zero-pads arr with 1/2 SIZE in x and y so that when patched the patches are
+    centered on the seams of the patches from the unpadded image
+    """
+
+    pad_SIZE = int(SIZE / 2)
+    expanded_image = np.pad(arr, ((0, 0), (pad_SIZE, pad_SIZE), (pad_SIZE, pad_SIZE)))
+
+    return expanded_image
 
 
 # Normalization functions from Martin Weigert
@@ -102,6 +121,25 @@ def unpatcher(arr, nrows, ncols, nchannels=1):
                 n += 1
 
     return out_arr
+
+def bin_frames_in_three(img):
+    #Bins frames into 3-frame chunks with stride 1
+    #Assumes img.shape = (frames, x, y)
+    #returns (frames-2, 3, x, y)
+    out = np.zeros((img.shape[0]-2, 3, img.shape[1], img.shape[2]), dtype=np.float32)
+    for frame in range(0, img.shape[0]-2):
+        out[frame] = img[frame:frame+3]
+    return out
+
+def checkEmptyMask(arr):
+    #checks if any patches are without masks
+    #returns list of indexes where mask is all zeros
+    out = []
+    for i in range(arr.shape[0]):
+        if not arr[i].any():
+            out.append(i)
+
+    return out
 
 def get_model_memory_usage(batch_size, model):
     import numpy as np
