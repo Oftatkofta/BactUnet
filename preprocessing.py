@@ -30,7 +30,7 @@ def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
     return patches.reshape(patches.shape[0] * patches.shape[1] * patches.shape[2], -1,  SIZE, SIZE)
 
 
-def unpatch_stack(patches, original_shape, DEPTH=3):
+def _unpatch_stack(patches, original_shape, DEPTH=3):
     n_frames = original_shape[0] - (DEPTH - 1)
     side_length = int(math.sqrt(patches.shape[0] / n_frames))
     patches = patches.reshape(n_frames, side_length, side_length, DEPTH, patches.shape[2], -1)
@@ -107,7 +107,12 @@ def _createOutArr(shape, nrows, ncols, nchannels):
 
     return out_arr
 
-def unpatcher(arr, nrows, ncols, nchannels=1):
+def unpatch_stack(arr, nrows, ncols, nchannels=1):
+    """
+    Undoes what patch_stack does.
+    Takes an numpy array of patches and stitches them back together.
+    """
+
     out_arr = _createOutArr(arr.shape, nrows, ncols, nchannels)
     patch_h = arr.shape[-2]
     patch_w = arr.shape[-1]
