@@ -12,12 +12,12 @@ from tensorflow import keras
 
 
 def patch_image(img, SIZE=288):
-    #breaks up image to SIZExSIZE non-overlapping patches, returns reshaped array
+    # breaks up image to SIZExSIZE non-overlapping patches, returns reshaped array
     # img.shape = (2304, 2304)
     patches = patchify(img, patch_size=(SIZE, SIZE), step=(SIZE, SIZE))
-    #patches.shape = (8, 8, 288, 288)
-    #return.shape = (64, 1, 288 ,288)
-    return patches.reshape(patches.shape[0]*patches.shape[1], -1, SIZE, SIZE)
+    # patches.shape = (8, 8, 288, 288)
+    # return.shape = (64, 1, 288 ,288)
+    return patches.reshape(patches.shape[0] * patches.shape[1], -1, SIZE, SIZE)
 
 
 def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
@@ -27,7 +27,7 @@ def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
     # patches.shape = (10, 8, 8, 3, 288, 288)
 
     # return.shape = (64, 3, 288 ,288)
-    return patches.reshape(patches.shape[0] * patches.shape[1] * patches.shape[2], -1,  SIZE, SIZE)
+    return patches.reshape(patches.shape[0] * patches.shape[1] * patches.shape[2], -1, SIZE, SIZE)
 
 
 def _unpatch_stack(patches, original_shape, DEPTH=3):
@@ -86,15 +86,17 @@ def normalizeMinMax(x, dtype=np.float32):
     x = (x - np.amin(x)) / (np.amax(x) - np.amin(x))
     return x
 
+
 def checkEmptyMask(arr):
-    #checks if any patches are without masks
-    #returns list of indexes where mask is all zeros
+    # checks if any patches are without masks
+    # returns list of indexes where mask is all zeros
     out = []
     for i in range(arr.shape[0]):
         if not arr[i].any():
             out.append(i)
 
     return out
+
 
 def _createOutArr(shape, nrows, ncols, nchannels):
     out_height = int(nrows * shape[-2])
@@ -106,6 +108,7 @@ def _createOutArr(shape, nrows, ncols, nchannels):
     out_arr = np.empty(outshape, dtype=np.float32)
 
     return out_arr
+
 
 def unpatch_stack(arr, nrows, ncols, nchannels=1):
     """
@@ -122,29 +125,32 @@ def unpatch_stack(arr, nrows, ncols, nchannels=1):
             for j in range(ncols):
                 y = patch_h * i
                 x = patch_w * j
-                out_arr[frame, :, y:y+patch_h, x:x+patch_w] = arr[n]
+                out_arr[frame, :, y:y + patch_h, x:x + patch_w] = arr[n]
                 n += 1
 
     return out_arr
 
+
 def bin_frames_in_three(img):
-    #Bins frames into 3-frame chunks with stride 1
-    #Assumes img.shape = (frames, x, y)
-    #returns (frames-2, 3, x, y)
-    out = np.zeros((img.shape[0]-2, 3, img.shape[1], img.shape[2]), dtype=np.float32)
-    for frame in range(0, img.shape[0]-2):
-        out[frame] = img[frame:frame+3]
+    # Bins frames into 3-frame chunks with stride 1
+    # Assumes img.shape = (frames, x, y)
+    # returns (frames-2, 3, x, y)
+    out = np.zeros((img.shape[0] - 2, 3, img.shape[1], img.shape[2]), dtype=np.float32)
+    for frame in range(0, img.shape[0] - 2):
+        out[frame] = img[frame:frame + 3]
     return out
 
+
 def checkEmptyMask(arr):
-    #checks if any patches are without masks
-    #returns list of indexes where mask is all zeros
+    # checks if any patches are without masks
+    # returns list of indexes where mask is all zeros
     out = []
     for i in range(arr.shape[0]):
         if not arr[i].any():
             out.append(i)
 
     return out
+
 
 def get_model_memory_usage(batch_size, model):
     import numpy as np
@@ -181,7 +187,3 @@ def get_model_memory_usage(batch_size, model):
     total_memory = number_size * (batch_size * shapes_mem_count + trainable_count + non_trainable_count)
     gbytes = np.round(total_memory / (1024.0 ** 3), 3) + internal_model_mem_count
     return gbytes
-
-
-
-
