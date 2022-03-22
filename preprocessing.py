@@ -31,6 +31,7 @@ def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
 
 
 def _unpatch_stack(patches, original_shape, DEPTH=3):
+    #DELETE LATER
     n_frames = original_shape[0] - (DEPTH - 1)
     side_length = int(math.sqrt(patches.shape[0] / n_frames))
     patches = patches.reshape(n_frames, side_length, side_length, DEPTH, patches.shape[2], -1)
@@ -38,7 +39,7 @@ def _unpatch_stack(patches, original_shape, DEPTH=3):
     return unpatchify(patches, original_shape)
 
 
-def pad_image_arr(arr, SIZE):
+def pad_stack(arr, SIZE):
     """
     Zero-pads arr with 1/2 SIZE in x and y so that when patched the patches are
     centered on the seams of the patches from the unpadded image
@@ -50,8 +51,25 @@ def pad_image_arr(arr, SIZE):
     return expanded_image
 
 
-# Normalization functions from Martin Weigert
-def normalizePercentile(x, pmin=1, pmax=99.8, axis=None, clip=False, eps=1e-20, dtype=np.float32):
+def crop_stack(arr, SIZE):
+    """
+    Undoes the padding from pad_stack, crops out the center, removing a 1/2 SIZE broder from around the stack
+    """
+    pad_SIZE = int(SIZE / 2)
+
+    if len(arr.shape) == 3:
+        t, y, x = arr.shape
+        stopY = y - pad_SIZE
+        stopX = x - pad_SIZE
+        return arr[:, pad_SIZE:stopY, pad_SIZE:stopX]
+
+    if len(arr.shape) == 4:
+        t, c, y, x = arr.shape
+        stopY = y - pad_SIZE
+        stopX = x - pad_SIZE
+        return arr[:, :, pad_SIZE:stopY, pad_SIZE:stopX]
+
+def normalizePercentile(x, pmin=1, pmax=99.8, axis=None, clip=True, eps=1e-20, dtype=np.float32):
     """This function is adapted from Martin Weigert"""
     """Percentile-based image normalization."""
 
@@ -60,7 +78,7 @@ def normalizePercentile(x, pmin=1, pmax=99.8, axis=None, clip=False, eps=1e-20, 
     return normalize_mi_ma(x, mi, ma, clip=clip, eps=eps, dtype=dtype)
 
 
-def normalize_mi_ma(x, mi, ma, clip=False, eps=1e-20, dtype=np.float32):  # dtype=np.float32
+def normalize_mi_ma(x, mi, ma, clip=True, eps=1e-20, dtype=np.float32):  # dtype=np.float32
     """This function is adapted from Martin Weigert"""
     if dtype is not None:
         x = x.astype(dtype, copy=False)
@@ -80,34 +98,25 @@ def normalize_mi_ma(x, mi, ma, clip=False, eps=1e-20, dtype=np.float32):  # dtyp
     return x
 
 
-# Simple normalization to min/max fir the Mask
 def normalizeMinMax(x, dtype=np.float32):
+    # Simple normalization to min/max for the Mask
     x = x.astype(dtype, copy=False)
     x = (x - np.amin(x)) / (np.amax(x) - np.amin(x))
     return x
 
 
 def checkEmptyMask(arr):
-    # checks if any patches are without masks
-    # returns list of indexes where mask is all zeros
+    """
+    Checks if any patches are without masks, previously used to discard patches with no mask.
+    returns list of indexes where mask is all zeros
+    """
+
     out = []
     for i in range(arr.shape[0]):
         if not arr[i].any():
             out.append(i)
 
     return out
-
-
-def _createOutArr(shape, nrows, ncols, nchannels):
-    out_height = int(nrows * shape[-2])
-    out_width = int(ncols * shape[-1])
-    out_frames = int(shape[0] / (nrows * ncols))
-
-    outshape = (out_frames, nchannels, out_height, out_width)
-
-    out_arr = np.empty(outshape, dtype=np.float32)
-
-    return out_arr
 
 
 def unpatch_stack(arr, nrows, ncols, nchannels=1):
@@ -127,6 +136,17 @@ def unpatch_stack(arr, nrows, ncols, nchannels=1):
                 x = patch_w * j
                 out_arr[frame, :, y:y + patch_h, x:x + patch_w] = arr[n]
                 n += 1
+
+    return out_arr
+
+def _createOutArr(shape, nrows, ncols, nchannels):
+    out_height = int(nrows * shape[-2])
+    out_width = int(ncols * shape[-1])
+    out_frames = int(shape[0] / (nrows * ncols))
+
+    outshape = (out_frames, nchannels, out_height, out_width)
+
+    out_arr = np.empty(outshape, dtype=np.float32)
 
     return out_arr
 
@@ -187,3 +207,21 @@ def get_model_memory_usage(batch_size, model):
     total_memory = number_size * (batch_size * shapes_mem_count + trainable_count + non_trainable_count)
     gbytes = np.round(total_memory / (1024.0 ** 3), 3) + internal_model_mem_count
     return gbytes
+
+
+def predict_stack(arr, batch_size, model):
+    """
+    Performs prediction on all images in arr using model in increments of batch_size
+    Assumes patches of a ahpe where N is 0th axis.
+    """
+    keras.backend.clear_session()
+    y_pred = None
+    for i in range(0, len(arr), batch_size):
+        pred = model.predict(arr[i:i + batch_size])
+        if y_pred is not None:
+            y_pred = np.concatenate((y_pred, pred))
+
+        else:
+            y_pred = pred
+
+    return y_pred
