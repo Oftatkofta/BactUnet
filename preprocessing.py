@@ -1,13 +1,6 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import tifffile as tiff
-import os
-from tensorflow.keras import layers
-import os
-import tifffile as tiff
-import numpy as np
-from matplotlib import pyplot as plt
-from patchify import patchify
+import math
+from patchify import patchify, unpatchify
 from tensorflow import keras
 
 
@@ -160,16 +153,6 @@ def bin_frames_in_three(img):
         out[frame] = img[frame:frame + 3]
     return out
 
-
-def checkEmptyMask(arr):
-    # checks if any patches are without masks
-    # returns list of indexes where mask is all zeros
-    out = []
-    for i in range(arr.shape[0]):
-        if not arr[i].any():
-            out.append(i)
-
-    return out
 
 
 def get_model_memory_usage(batch_size, model):

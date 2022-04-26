@@ -100,7 +100,7 @@ def triangular_window(height, width):
 indir = r"C:\Users\Jens\Documents\Code\bactnet\Bactnet\Training data\stacks\predict\piccolo"
 
 h = 288
-w = 144
+w = 288
 
 
 plt.subplot(331)
