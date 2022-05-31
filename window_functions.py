@@ -1,7 +1,6 @@
 import numpy as np
 import math
-from matplotlib import pyplot as plt
-import tifffile as tiff
+
 
 def hann_window(height, width):
     """
@@ -96,31 +95,40 @@ def triangular_window(height, width):
 
     return out
 
+def step_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a step window
+    """
+    
+    return height
 
-indir = r"C:\Users\Jens\Documents\Code\bactnet\Bactnet\Training data\stacks\predict\piccolo"
-
-h = 288
-w = 144
+#def _maskgen_helper(i, j, n_side, window_type):
+    #returns correct window generator
 
 
-plt.subplot(331)
-plt.imshow(corner_hann_window(h, w))
-plt.subplot(332)
-plt.imshow(top_hann_window(h, w))
-plt.subplot(333)
-plt.imshow(np.rot90(corner_hann_window(h, w), 3))
-plt.subplot(334)
-plt.imshow(np.rot90(top_hann_window(h, w), 1))
-plt.subplot(335)
-plt.imshow(hann_window(h, w))
-plt.subplot(336)
-plt.imshow(np.rot90(top_hann_window(h, w), 3))
-plt.subplot(337)
-plt.imshow(np.rot90(corner_hann_window(h, w), 1))
-plt.subplot(338)
-plt.imshow(np.rot90(top_hann_window(h, w), 2))
-plt.subplot(339)
-plt.imshow(np.rot90(corner_hann_window(h, w), 2))
-plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
+def build_weighted_mask_array(window_type, patch_size, n_side):
+    """
+    patches corner, top, and venter windows into one lagre array that can me used
+    as a weighted mask.
+    
+    :parmam window_type: string
+    :param n_side: int, how many patches on the side
+    
+    :return: nupy array of shape (patch_sixe*n_side, patch_sixe*n_side) 
+    """
+    implemented_windows = ["hann", "bartley-hann", "triangular", "step"]
+    assert (window_type in implemented_windows), "Window function not inplemented or misspelled"
+    n_pix = n_side * patch_size
+    out = np.empty((n_pix, n_pix), dtype=float32)
+    for i in range(n_side):
+        for j in range(n_side):
+            if (i==0):
+                if (j==i):
+                    out[0:patch_size, 0:patch_size] = corner_hann_window(patch_size, patch_size)
+                if (j==n_side-1):
+                    out[0:patch_size, 0:patch_size] = np.rot90(corner_hann_window(patch_size, patch_size),3)
+    
+    return out
 
-plt.show()
