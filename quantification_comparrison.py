@@ -95,39 +95,35 @@ def calculateMeanIntensity(arr):
 
     return avg_intensity
 
-def meanIntensityAsDf(arr, colname="MEAN_intensity_AU"):
+def mean_intensities_as_df(raw_mean, raw_median, norm_mean, norm_median, metadata):
     """
-    Returns frame and mean intensity for the frame as a Pandas DataFrame.
+    Returns frame, mean intensise and metadata for the file as a Pandas DataFrame.
 
-    :return: DataFrame with 1 column for average speed and index = frame number
+    :return: DataFrame with 7 columns 
     :rtype: pandas.DataFrame
     """
-    avg_intensities = calculateMeanIntensity(arr)
-    df = pd.DataFrame(avg_intensities, columns=[colname])
-    df['frame'] = range(0, len(df))
+    
+    tempdict = {
+                "frame" : range(1, raw_mean.shape[0]+1),
+                "raw_mean_intensity":raw_mean,
+                "temporal_median_intensity":raw_median,
+                "norm_mean_intensity":norm_mean,
+                "norm_median_intensity":norm_median,
+                "condition":metadata["condition"],
+                "experiment":metadata["experiment"], 
+                "bacteria":metadata["bacteria"],
+                "filename":metadata["filename"]
+                }
+    df = pd.DataFrame(tempdict)
+    
     return df
-
-
-
-def spaghetti(myfile):
-    with TiffFile(myfile) as tif:
-        arr = tif.asarray()
-        arr = arr[0:12,:,:,:]
-        mcherry_arr = arr[:,1,:,:]
-        mcherry_arr = normalizeMinMax(mcherry_arr)
-        mcherry_median = getTemporalMedianFilter(mcherry_arr, doGlidingProjection=True, startFrame=0, stopFrame=mcherry_arr.shape[0])
-        mcherry_arr = mcherry_arr[1:, :, :] #drop firs frame to equate length
-        print(arr.shape, mcherry_arr.shape, mcherry_median.shape)
-        mean_df = meanIntensityAsDf(mcherry_arr, "raw_mean")
-        mean_df = mean_df.melt(id_vars=(["frame"]), value_vars=(["raw_mean"]))
-        filter_mean_df = meanIntensityAsDf(mcherry_median, "temporal_median_mean").melt(id_vars=(["frame"]), value_vars=(["temporal_median_mean"]))
-        df = pd.concat([mean_df, filter_mean_df])
-        print(df)
-        sns.scatterplot(x="frame", y="value",hue="variable", data=df)
-
     
 
 def list_files(startpath, prettyPrint=True):
+    """
+    Lists and optionally prints the files in starpath.
+    Return a list of the full paths to first .ome.tif files it enounters
+    """
     out = []
     for root, dirs, files in os.walk(startpath):
         if prettyPrint:
@@ -141,8 +137,11 @@ def list_files(startpath, prettyPrint=True):
                 print('{}{}'.format(subindent, f))
                 if ".ome.tif" in f:
                     print(root+"\\" + f)
-            out.append(root+"\\" + f)
-            break
+            if "_1.ome.tif" in f:
+                break
+            if ".tif" in f:
+                out.append(root+"\\" + f)
+            
 
     return out
 
@@ -150,19 +149,70 @@ def get_metadata(filepath):
     #returns a dictionary of metadata from the folder structure of the filepath
     out = {}
     metalist = filepath.split("\\")
-    out["condition"] = metalist[2]
-    out["experiment"] = metalist[3]
-    out["bacteria"] = metalist[4]
-    out["filename"] = metalist[6]
-    out["filepath"] = filepath
+    if len(metalist) > 7:
+        out["condition"] = metalist[2]
+        out["experiment"] = metalist[3]
+        out["bacteria"] = metalist[4]
+        out["filename"] = metalist[6]
+        out["filepath"] = filepath
     
     return out
     
+
+def process_one_file(metadata, stopframe=None):
+    fh = metadata["filepath"]
+    with TiffFile(fh) as tif:
+        arr = tif.asarray()
+        
+    if stopframe is not None:
+        arr = arr[0:stopframe,:,:,:]
+    
+    mcherry_arr = arr[:,1,:,:] #mCherry is always ch2
+    norm_mcherry_arr = normalizeMinMax(mcherry_arr)
+    
+    mcherry_median = getTemporalMedianFilter(mcherry_arr,
+                                             doGlidingProjection=True,
+                                             startFrame=0,
+                                             stopFrame=mcherry_arr.shape[0])
+    
+    norm_mcherry_median = normalizeMinMax(mcherry_median)
+    
+    mcherry_arr = mcherry_arr[1:-1, :, :] #drop first and frame to equate length
+    norm_mcherry_arr = norm_mcherry_arr[1:-1, :, :] #drop first and frame to equate length
+    
+    raw_means = calculateMeanIntensity(mcherry_arr)
+    raw_median = calculateMeanIntensity(mcherry_median)
+    norm_means = calculateMeanIntensity(norm_mcherry_arr)
+    norm_median = calculateMeanIntensity(norm_mcherry_median)
+    
+    print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
+    out_df = mean_intensities_as_df(raw_means, raw_median, norm_means, norm_median ,metadata)
+        
+    return out_df
+        
+def run_analysis(infiles, savepath):
+    out_df = None
+    for f in infiles:
+        print("Working on ", f)
+        fp = os.path.abspath(f)
+        metadata = get_metadata(fp)
+        df = process_one_file(metadata, 12)
+        if out_df is None:
+            out_df = df
+        
+        out_df = pd.concat([out_df,df])
+    
+    out_df.to_csv(savepath, index=False)
+    
+    return out_df
     
 
-startpath = r"F:\bactunet_val"
+
+startpath = r"F:\BactUnet\bactunet_val"
 infiles = list_files(startpath, prettyPrint=False)
-for f in infiles:
-     fp = os.path.abspath(f)
-     metadata = get_metadata(fp)
-     print(metadata)
+outfile = os.path.join(r"F:\BactUnet", 'fl_quantifiaction_raw_data.csv')
+run_analysis(infiles, outfile)
+
+
+
+     
