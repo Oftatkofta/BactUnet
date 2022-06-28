@@ -145,8 +145,24 @@ def list_files(startpath, prettyPrint=True):
             break
 
     return out
+
+def get_metadata(filepath):
+    #returns a dictionary of metadata from the folder structure of the filepath
+    out = {}
+    metalist = filepath.split("\\")
+    out["condition"] = metalist[2]
+    out["experiment"] = metalist[3]
+    out["bacteria"] = metalist[4]
+    out["filename"] = metalist[6]
+    out["filepath"] = filepath
+    
+    return out
+    
+    
+
 startpath = r"F:\bactunet_val"
-infiles = list_files(startpath, prettyPrint=True)
-# for f in infiles:
-#     fp = os.path(f)
-#     print(fp)
+infiles = list_files(startpath, prettyPrint=False)
+for f in infiles:
+     fp = os.path.abspath(f)
+     metadata = get_metadata(fp)
+     print(metadata)
