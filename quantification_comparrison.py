@@ -10,13 +10,14 @@ from tifffile import TiffFile
 import tifffile
 import numpy as np
 import pandas as pd
-from preprocessing import normalizeMinMax
+from preprocessing import normalizeMinMax, normalizePercentile
 import seaborn as sns
 import os
 
 from matplotlib import pyplot as plt
+from skimage.filters import threshold_otsu
 
-print(tifffile.__version__)
+#print(tifffile.__version__)
 
 
 
@@ -107,8 +108,8 @@ def mean_intensities_as_df(raw_mean, raw_median, norm_mean, norm_median, metadat
                 "frame" : range(1, raw_mean.shape[0]+1),
                 "raw_mean_intensity":raw_mean,
                 "temporal_median_intensity":raw_median,
-                "norm_mean_intensity":norm_mean,
-                "norm_median_intensity":norm_median,
+                "thresholded_mean_intensity":norm_mean,
+                "thresholded_median_intensity":norm_median,
                 "condition":metadata["condition"],
                 "experiment":metadata["experiment"], 
                 "bacteria":metadata["bacteria"],
@@ -149,15 +150,24 @@ def get_metadata(filepath):
     #returns a dictionary of metadata from the folder structure of the filepath
     out = {}
     metalist = filepath.split("\\")
-    if len(metalist) > 7:
-        out["condition"] = metalist[2]
-        out["experiment"] = metalist[3]
-        out["bacteria"] = metalist[4]
-        out["filename"] = metalist[6]
-        out["filepath"] = filepath
+
+    out["condition"] = metalist[3]
+    out["experiment"] = metalist[4]
+    out["bacteria"] = metalist[5]
+    out["filename"] = metalist[7]
+    out["filepath"] = filepath
     
     return out
     
+
+def apply_otsu_threshold(arr):
+    #applies otsu's threshold on the whole array
+    arr = arr.astype('int16')
+    threshold = threshold_otsu(arr)
+    arr[arr <= threshold] = 0
+    
+    return arr
+
 
 def process_one_file(metadata, stopframe=None):
     fh = metadata["filepath"]
@@ -184,11 +194,47 @@ def process_one_file(metadata, stopframe=None):
     raw_median = calculateMeanIntensity(mcherry_median)
     norm_means = calculateMeanIntensity(norm_mcherry_arr)
     norm_median = calculateMeanIntensity(norm_mcherry_median)
+
     
-    print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
+    #print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
     out_df = mean_intensities_as_df(raw_means, raw_median, norm_means, norm_median ,metadata)
         
     return out_df
+
+def process_one_file_threshold(metadata, stopframe=None):
+    fh = metadata["filepath"]
+    with TiffFile(fh) as tif:
+        arr = tif.asarray()
+        
+    if stopframe is not None:
+        arr = arr[0:stopframe,:,:,:]
+    
+    mcherry_arr = arr[:,1,:,:] #mCherry is always ch2
+    mcherry_median = getTemporalMedianFilter(mcherry_arr,
+                                             doGlidingProjection=True,
+                                             startFrame=0,
+                                             stopFrame=mcherry_arr.shape[0])
+    
+    mcherry_arr = mcherry_arr[1:-1, :, :] #drop first and frame to equate length
+
+    
+    thresholded_raw_arr = apply_otsu_threshold(mcherry_arr)
+    thresholded_median_arr = apply_otsu_threshold(mcherry_median)
+    
+    raw_means = calculateMeanIntensity(mcherry_arr)
+    raw_median = calculateMeanIntensity(mcherry_median)
+    thresholded_means = calculateMeanIntensity(thresholded_raw_arr)
+    thresholded_median = calculateMeanIntensity(thresholded_median_arr)
+
+    
+    #print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
+    out_df = mean_intensities_as_df(raw_means, raw_median, thresholded_means, thresholded_median , metadata)
+    
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_raw", metadata["filename"]),thresholded_raw_arr)
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_median", metadata["filename"]), thresholded_median_arr)   
+    return out_df
+
+
         
 def run_analysis(infiles, savepath):
     out_df = None
@@ -196,7 +242,7 @@ def run_analysis(infiles, savepath):
         print("Working on ", f)
         fp = os.path.abspath(f)
         metadata = get_metadata(fp)
-        df = process_one_file(metadata, 12)
+        df = process_one_file_threshold(metadata)
         if out_df is None:
             out_df = df
         
@@ -207,11 +253,15 @@ def run_analysis(infiles, savepath):
     return out_df
     
 
+    
+    
+
 
 startpath = r"F:\BactUnet\bactunet_val"
 infiles = list_files(startpath, prettyPrint=False)
-outfile = os.path.join(r"F:\BactUnet", 'fl_quantifiaction_raw_data.csv')
+outfile = os.path.join(r"F:\BactUnet", 'fl_quantifiaction_otsu_data.csv')
 run_analysis(infiles, outfile)
+
 
 
 
