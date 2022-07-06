@@ -5,11 +5,11 @@ Created on Tue May  3 13:57:14 2022
 @author: Jens
 """
 
-from cellocity.channel import Channel, MedianChannel
+#from cellocity.channel import Channel, MedianChannel
 from tifffile import TiffFile
 import tifffile
 import numpy as np
-import pandas as pd
+#import pandas as pd
 from preprocessing import normalizeMinMax, normalizePercentile
 import seaborn as sns
 import os
