@@ -1,44 +1,116 @@
 import numpy as np
+import pandas as pd
 from tifffile import TiffFile
 from skimage.restoration import rolling_ball, ellipsoid_kernel
-from skimage.filters import gaussian, threshold_otsu
-from quantification_comparrison import getTemporalMedianFilter, list_files, get_metadata
-
-startpath = r"F:\BactUnet\bactunet_val"
-infiles = list_files(startpath, prettyPrint=False)
-
-
-
-
-with TiffFile(fh) as tif:
-    arr = tif.asarray()
+from skimage.filters import gaussian
+from quantification_comparrison import getTemporalMedianFilter, get_metadata
+from skimage.filters import threshold_otsu
+from skimage.morphology import erosion, dilation
+from skimage.measure import find_contours
 
 
 
-image = arr[50]
-image_gray = arr[50]
 
-#blobs_log = blob_log(image_gray, max_sigma=30, num_sigma=10, threshold=.1)
+def get_both_arrays(fh):
 
-# Compute radii in the 3rd column.
-#blobs_log[:, 2] = blobs_log[:, 2] * sqrt(2)
+    with TiffFile(fh) as tif:
+        arr = tif.asarray()
 
-#blobs_dog = blob_dog(image_gray, max_sigma=30, threshold=.1)
-#blobs_dog[:, 2] = blobs_dog[:, 2] * sqrt(2)
+    med_arr = getTemporalMedianFilter(arr[:,1,:,:],doGlidingProjection=True, startFrame=0, stopFrame=arr.shape[0])
+    arr = arr[1:-1,1,:,:]
 
-blobs_doh = blob_doh(image_gray)
+    return arr, med_arr
 
-fig, axes = plt.subplots(1, 3, figsize=(9, 3), sharex=True, sharey=True)
-ax = axes.ravel()
+kernel = ellipsoid_kernel((25, 25), 75)
 
-for idx, (blobs, color, title) in enumerate(sequence):
-    ax[idx].set_title(title)
-    ax[idx].imshow(image)
-    for blob in blobs:
-        y, x, r = blob
-        c = plt.Circle((x, y), r, color=color, linewidth=2, fill=False)
-        ax[idx].add_patch(c)
-    ax[idx].set_axis_off()
+def apply_rolling_ball(frame):
+    background = rolling_ball(frame, kernel=kernel)
+    filtered_image = frame - background
+    return filtered_image
 
-plt.tight_layout()
-plt.show()
+def bg_subtract(arr):
+    bg_arr = []
+    for i in len(arr):
+        print("rolling with frame: ", i)
+        a = gaussian(arr[i], sigma=0.8, preserve_range=True)
+        a = apply_rolling_ball(a)
+        bg_arr.append(a)
+    return bg_arr
+
+def count_bacteria(arr):
+
+    bact_per_frame = []
+
+    for frame in arr:
+
+        th = threshold_otsu(frame)
+        frame = frame > th*2
+        frame = erosion(frame)
+        frame = dilation(frame)
+        nbact = 0
+        contours = find_contours(frame)
+        for c in contours:
+            if c.size > 100:
+                nbact += 1
+        bact_per_frame.append(nbact)
+
+    return bact_per_frame
+
+
+def nbact_as_df(raw_nbact, med_nbact, metadata):
+    """
+    Returns frame, mean intensities and metadata for the file as a Pandas DataFrame.
+
+    :return: DataFrame with 8 columns
+    :rtype: pandas.DataFrame
+    """
+
+    tempdict = {
+        "frame": range(1, len(raw_nbact) + 1),
+        "raw_nbact": raw_nbact,
+        "TM_nbact": med_nbact,
+        "condition": metadata["condition"],
+        "experiment": metadata["experiment"],
+        "bacteria": metadata["bacteria"],
+        "filepath": metadata["filepath"],
+        "filename": metadata["filename"]
+    }
+    df = pd.DataFrame(tempdict)
+
+    return df
+
+def process_one_file(metadata):
+    fh = metadata["filepath"]
+
+    arrs = get_both_arrays(fh)
+    bg_arr = bg_subtract(arrs[0])
+    bg_med = bg_subtract(arrs[1])
+    raw_nbact = count_bacteria(bg_arr)
+    med_nbact = count_bacteria(bg_med)
+
+    df = nbact_as_df(raw_nbact, med_nbact, metadata)
+
+    return df
+
+
+def run_analysis(infiles, savepath):
+    out_df = None
+    for f in infiles:
+        print("Working on ", f)
+        fp = os.path.abspath(f)
+        metadata = get_metadata(fp)
+        df = process_one_file(metadata)
+        if out_df is None:
+            out_df = df
+
+        out_df = pd.concat([out_df, df])
+
+    out_df.to_csv(savepath, index=False)
+
+    return out_df
+
+if __name__ == '__main__':
+    startpath = r"F:\BactUnet\bactunet_val"
+    infiles = list_files(startpath, prettyPrint=False)
+    savepath = r"F:\BactUnet\bacteria_count.csv"
+    run_analysis(infiles, savepath)
