@@ -9,7 +9,7 @@ Created on Tue May  3 13:57:14 2022
 from tifffile import TiffFile
 import tifffile
 import numpy as np
-#import pandas as pd
+import pandas as pd
 from preprocessing import normalizeMinMax, normalizePercentile
 import seaborn as sns
 import os
@@ -98,7 +98,7 @@ def calculateMeanIntensity(arr):
 
 def mean_intensities_as_df(raw_mean, raw_median, norm_mean, norm_median, metadata):
     """
-    Returns frame, mean intensise and metadata for the file as a Pandas DataFrame.
+    Returns frame, mean intensities and metadata for the file as a Pandas DataFrame.
 
     :return: DataFrame with 7 columns 
     :rtype: pandas.DataFrame
@@ -160,13 +160,26 @@ def get_metadata(filepath):
     return out
     
 
-def apply_otsu_threshold(arr):
+def apply_otsu_threshold_global(arr):
     #applies otsu's threshold on the whole array
     arr = arr.astype('int16')
     threshold = threshold_otsu(arr)
     arr[arr <= threshold] = 0
     
     return arr
+
+def apply_otsu_threshold_local(arr):
+    #applies otsu's threshold on each frame locally
+    arr = arr.astype('int16')
+    i = 0
+    out = np.empty_like(arr)
+    
+    for frame in arr:
+        threshold = threshold_otsu(frame)
+        out[i] = (frame > threshold) * frame
+        i += 1
+    
+    return out
 
 
 def process_one_file(metadata, stopframe=None):
@@ -201,7 +214,7 @@ def process_one_file(metadata, stopframe=None):
         
     return out_df
 
-def process_one_file_threshold(metadata, stopframe=None):
+def process_one_file_global_threshold(metadata, stopframe=None):
     fh = metadata["filepath"]
     with TiffFile(fh) as tif:
         arr = tif.asarray()
@@ -218,8 +231,41 @@ def process_one_file_threshold(metadata, stopframe=None):
     mcherry_arr = mcherry_arr[1:-1, :, :] #drop first and frame to equate length
 
     
-    thresholded_raw_arr = apply_otsu_threshold(mcherry_arr)
-    thresholded_median_arr = apply_otsu_threshold(mcherry_median)
+    thresholded_raw_arr = apply_otsu_threshold_global(mcherry_arr)
+    thresholded_median_arr = apply_otsu_threshold_global(mcherry_median)
+    
+    raw_means = calculateMeanIntensity(mcherry_arr)
+    raw_median = calculateMeanIntensity(mcherry_median)
+    thresholded_means = calculateMeanIntensity(thresholded_raw_arr)
+    thresholded_median = calculateMeanIntensity(thresholded_median_arr)
+
+    
+    #print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
+    out_df = mean_intensities_as_df(raw_means, raw_median, thresholded_means, thresholded_median , metadata)
+    
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_raw", metadata["filename"]),thresholded_raw_arr)
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_median", metadata["filename"]), thresholded_median_arr)   
+    return out_df
+
+def process_one_file_local_threshold(metadata, stopframe=None):
+    fh = metadata["filepath"]
+    with TiffFile(fh) as tif:
+        arr = tif.asarray()
+        
+    if stopframe is not None:
+        arr = arr[0:stopframe,:,:,:]
+    
+    mcherry_arr = arr[:,1,:,:] #mCherry is always ch2
+    mcherry_median = getTemporalMedianFilter(mcherry_arr,
+                                             doGlidingProjection=True,
+                                             startFrame=0,
+                                             stopFrame=mcherry_arr.shape[0])
+    
+    mcherry_arr = mcherry_arr[1:-1, :, :] #drop first and frame to equate length
+
+    
+    thresholded_raw_arr = apply_otsu_threshold_local(mcherry_arr)
+    thresholded_median_arr = apply_otsu_threshold_local(mcherry_median)
     
     raw_means = calculateMeanIntensity(mcherry_arr)
     raw_median = calculateMeanIntensity(mcherry_median)
@@ -235,6 +281,44 @@ def process_one_file_threshold(metadata, stopframe=None):
     return out_df
 
 
+def process_one_file_both_thresholds(metadata, stopframe=None):
+    fh = metadata["filepath"]
+    with TiffFile(fh) as tif:
+        arr = tif.asarray()
+
+    if stopframe is not None:
+        arr = arr[0:stopframe, :, :, :]
+
+    mcherry_arr = arr[:, 1, :, :]  # mCherry is always ch2
+    mcherry_median = getTemporalMedianFilter(mcherry_arr,
+                                             doGlidingProjection=True,
+                                             startFrame=0,
+                                             stopFrame=mcherry_arr.shape[0])
+
+    mcherry_arr = mcherry_arr[1:-1, :, :]  # drop first and frame to equate length
+
+    local_raw_arr = apply_otsu_threshold_local(mcherry_arr)
+    local_median_arr = apply_otsu_threshold_local(mcherry_median)
+
+    global_raw_arr = apply_otsu_threshold_global(mcherry_arr)
+    global_median_arr = apply_otsu_threshold_global(mcherry_median)
+
+    raw_means = calculateMeanIntensity(mcherry_arr)
+    raw_median = calculateMeanIntensity(mcherry_median)
+    local_means = calculateMeanIntensity(local_raw_arr)
+    local_median = calculateMeanIntensity(local_median_arr)
+
+    global_means = calculateMeanIntensity(global_raw_arr)
+    global_median = calculateMeanIntensity(global_median_arr)
+
+    # print(raw_means.shape, raw_median.shape, norm_means.shape, norm_median.shape)
+    out_df = mean_intensities_as_df(raw_means, raw_median, local_means, local_median, metadata)
+
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_raw", metadata["filename"]), local_raw_arr)
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\masks_median", metadata["filename"]), local_median_arr)
+    return out_df
+
+
         
 def run_analysis(infiles, savepath):
     out_df = None
@@ -242,7 +326,7 @@ def run_analysis(infiles, savepath):
         print("Working on ", f)
         fp = os.path.abspath(f)
         metadata = get_metadata(fp)
-        df = process_one_file_threshold(metadata)
+        df = process_one_file_local_threshold(metadata, None)
         if out_df is None:
             out_df = df
         
@@ -257,12 +341,9 @@ def run_analysis(infiles, savepath):
     
 
 
-startpath = r"F:\BactUnet\bactunet_val"
-infiles = list_files(startpath, prettyPrint=False)
-outfile = os.path.join(r"F:\BactUnet", 'fl_quantifiaction_otsu_data.csv')
-run_analysis(infiles, outfile)
-
-
-
-
-     
+#startpath = r"F:\BactUnet\bactunet_val"
+#infiles = list_files(startpath, prettyPrint=False)
+#outfile = os.path.join(r"F:\BactUnet", 'fl_quantifiaction_local_otsu_data.csv')
+#run_analysis(infiles, outfile)
+#for f in infiles:
+#    print(f.split('\\')[-1])
