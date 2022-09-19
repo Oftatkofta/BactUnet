@@ -1,13 +1,12 @@
-import numpy as np
 import pandas as pd
 from tifffile import TiffFile
 from skimage.restoration import rolling_ball, ellipsoid_kernel
 from skimage.filters import gaussian
-from quantification_comparrison import getTemporalMedianFilter, get_metadata
+from quantification_comparrison import getTemporalMedianFilter, get_metadata, list_files
 from skimage.filters import threshold_otsu
 from skimage.morphology import erosion, dilation
 from skimage.measure import find_contours
-
+import os
 
 
 
@@ -30,7 +29,7 @@ def apply_rolling_ball(frame):
 
 def bg_subtract(arr):
     bg_arr = []
-    for i in len(arr):
+    for i in range(len(arr)):
         print("rolling with frame: ", i)
         a = gaussian(arr[i], sigma=0.8, preserve_range=True)
         a = apply_rolling_ball(a)
