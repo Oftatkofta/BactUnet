@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from tifffile import TiffFile
 from skimage.restoration import rolling_ball, ellipsoid_kernel
@@ -36,16 +37,22 @@ def bg_subtract(arr):
         bg_arr.append(a)
     return bg_arr
 
+def threshold_array(arr):
+    out = np.empty_like(arr)
+
+    for i in range(len(arr)):
+        frame = arr[i]
+        th = threshold_otsu(frame)
+        frame = frame > th*2
+        frame = erosion(frame)
+        frame = dilation(frame)
+        out[i] = frame
+
 def count_bacteria(arr):
 
     bact_per_frame = []
 
     for frame in arr:
-
-        th = threshold_otsu(frame)
-        frame = frame > th*2
-        frame = erosion(frame)
-        frame = dilation(frame)
         nbact = 0
         contours = find_contours(frame)
         for c in contours:
@@ -84,8 +91,15 @@ def process_one_file(metadata):
     arrs = get_both_arrays(fh)
     bg_arr = bg_subtract(arrs[0])
     bg_med = bg_subtract(arrs[1])
+
+    bg_arr = threshold_array(bg_arr)
+    bg_med = threshold_array(bg_med)
+
     raw_nbact = count_bacteria(bg_arr)
     med_nbact = count_bacteria(bg_med)
+
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\thresholded_mcherry", "raw_"+metadata["filename"]), bg_arr)
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\thresholded_mcherry", "TM_"+metadata["filename"]), bg_med)
 
     df = nbact_as_df(raw_nbact, med_nbact, metadata)
 
@@ -111,5 +125,5 @@ def run_analysis(infiles, savepath):
 if __name__ == '__main__':
     startpath = r"F:\BactUnet\bactunet_val"
     infiles = list_files(startpath, prettyPrint=False)
-    savepath = r"F:\BactUnet\bacteria_count.csv"
+    savepath = r"F:\BactUnet\bacteria_count_V2.csv"
     run_analysis(infiles, savepath)
