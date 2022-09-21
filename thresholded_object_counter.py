@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import tifffile
 from tifffile import TiffFile
 from skimage.restoration import rolling_ball, ellipsoid_kernel
 from skimage.filters import gaussian
@@ -45,8 +46,12 @@ def threshold_array(arr):
         th = threshold_otsu(frame)
         frame = frame > th*2
         frame = erosion(frame)
+        frame = erosion(frame)
         frame = dilation(frame)
+		
         out[i] = frame
+	
+    return out.astype('uint8')
 
 def count_bacteria(arr):
 
