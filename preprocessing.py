@@ -197,7 +197,7 @@ def predict_stack(arr, batch_size, model):
     Performs prediction on all images in arr using model in increments of batch_size
     Assumes patches of a ahpe where N is 0th axis.
     """
-    keras.backend.clear_session()
+    #keras.backend.clear_session()
     y_pred = None
     for i in range(0, len(arr), batch_size):
         pred = model.predict(arr[i:i + batch_size])

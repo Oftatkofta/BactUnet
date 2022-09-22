@@ -6,7 +6,7 @@ from skimage.restoration import rolling_ball, ellipsoid_kernel
 from skimage.filters import gaussian
 from quantification_comparrison import getTemporalMedianFilter, get_metadata, list_files
 from skimage.filters import threshold_otsu
-from skimage.morphology import erosion, dilation
+from skimage.morphology import binary_erosion, binary_dilation
 from skimage.measure import find_contours
 import os
 
@@ -45,12 +45,13 @@ def threshold_array(arr):
         frame = arr[i]
         th = threshold_otsu(frame)
         frame = frame > th*2
-        frame = erosion(frame)
-        frame = erosion(frame)
-        frame = dilation(frame)
-		
+        frame = binary_erosion(frame)
+        frame = binary_erosion(frame)
+        frame = binary_dilation(frame)
+
         out[i] = frame
-	
+    out = out * 255
+
     return out.astype('uint8')
 
 def count_bacteria(arr):
