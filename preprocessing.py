@@ -200,6 +200,7 @@ def predict_stack(arr, batch_size, model):
     #keras.backend.clear_session()
     y_pred = None
     for i in range(0, len(arr), batch_size):
+        print("Prediction frames: {}-{} of {}".format(i,i+batch_size, arr.shape[0]))
         pred = model.predict(arr[i:i + batch_size])
         if y_pred is not None:
             y_pred = np.concatenate((y_pred, pred))

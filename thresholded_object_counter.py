@@ -44,7 +44,7 @@ def threshold_array(arr):
     for i in range(len(arr)):
         frame = arr[i]
         th = threshold_otsu(frame)
-        frame = frame > th*2
+        frame = frame > th*1.5
         frame = binary_erosion(frame)
         frame = binary_erosion(frame)
         frame = binary_dilation(frame)
