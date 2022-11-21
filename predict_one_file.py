@@ -20,7 +20,7 @@ else:
 print('TensorFlow {}; Keras {}'.format(tf.__version__, keras.__version__))
 
 #load pretrained model
-model = load_model("models/bactunet_V4_3frame_empty_250ep.hdf5", compile=False)
+model = load_model(r"F:\BactUnet\models\bactunet_V4_3frame_empty_250ep.hdf5", compile=False)
 #set patch size
 SIZE = 288
 
