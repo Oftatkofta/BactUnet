@@ -20,7 +20,7 @@ else:
 print('TensorFlow {}; Keras {}'.format(tf.__version__, keras.__version__))
 
 #load pretrained model
-model = load_model(r"F:\BactUnet\models\bactunet_V4_3frame_empty_250ep.hdf5", compile=False)
+model = load_model(r"F:\BactUnet\models\bactunet_V4_single_frame.hdf5", compile=False)
 #set patch size
 SIZE = 288
 
@@ -58,7 +58,7 @@ def process_one_file(fname, stopframe=None):
 
     print("Saving...shape of save array:{}".format(saveme.shape))
 
-    tifffile.imwrite(os.path.join(r"F:\BactUnet\prediction_output", "pred_V4_empt"+fname), saveme, imagej=True, resolution=(1. / 0.167, 1. / 0.167),
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\prediction_output", "pred_V4_single"+fname), saveme, imagej=True, resolution=(1. / 0.167, 1. / 0.167),
                  metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
 
 
