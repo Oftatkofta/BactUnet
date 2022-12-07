@@ -42,7 +42,7 @@ def process_one_file(fname, stopframe=None):
     dic_arr = arr[:, 0, :, :]
     dic_arr = normalizePercentile(dic_arr, 0.1, 99.9, clip=True)
     patched_dic_arr = patch_stack(dic_arr, SIZE)
-    
+    patched_dic_arr = np.expand_dims(patched_dic_arr[:,1,:,:], axis=1)
     pred_arr = predict_stack(patched_dic_arr, 128, model)
     print("prediction shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     pred_arr = unpatch_stack(pred_arr, 8, 8, 1)
@@ -54,15 +54,12 @@ def process_one_file(fname, stopframe=None):
     #dic_arr = dic_arr.astype('uint8')[1:-1,:,:] #Both channels now 8-bit for saving, remove first two frames
     #print("Original shape: {} {}, prediction shape: {} type {} min/max {}/{}".format(dic_arr.shape, dic_arr.dtype, pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     
-    saveme = np.stack((pred_arr), axis=1)
+    #saveme = np.stack((pred_arr), axis=1)
 
-    print("Saving...shape of save array:{}".format(saveme.shape))
+    #print("Saving...shape of save array:{}".format(saveme.shape))
 
-<<<<<<< Updated upstream
-    tifffile.imwrite(os.path.join(r"F:\BactUnet\prediction_output", "pred_V4_single"+fname), saveme, imagej=True, resolution=(1. / 0.167, 1. / 0.167),
-=======
-    tifffile.imwrite(os.path.join(r"F:\BactUnet\prediction_output", "pred_V4_empt_OGM3_1.tif"), saveme, imagej=True, resolution=(1. / 0.167, 1. / 0.167),
->>>>>>> Stashed changes
+
+    tifffile.imwrite(os.path.join(r"F:\BactUnet\prediction_output", "pred_V4_single_OGM3.tif"), pred_arr, imagej=True, resolution=(1. / 0.167, 1. / 0.167),
                  metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
 
 
