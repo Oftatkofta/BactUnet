@@ -122,6 +122,7 @@ _results/
 models/
 *.h5
 *.hdf5
+/csv_data
 
 main.py
 manual_counts.csv
