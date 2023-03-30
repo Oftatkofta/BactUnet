@@ -110,8 +110,8 @@ def step_window(height, width):
 
 def build_weighted_mask_array(window_type, patch_size, n_side):
     """
-    patches corner, top, and venter windows into one lagre array that can me used
-    as a weighted mask.
+    patches corner, top, and corner windows into one large array that can me used
+    as a weighted (or binary) mask.
     
     :parmam window_type: string
     :param n_side: int, how many patches on the side
@@ -119,16 +119,24 @@ def build_weighted_mask_array(window_type, patch_size, n_side):
     :return: nupy array of shape (patch_sixe*n_side, patch_sixe*n_side) 
     """
     implemented_windows = ["hann", "bartley-hann", "triangular", "step"]
-    assert (window_type in implemented_windows), "Window function not inplemented or misspelled"
+
+    assert (window_type in implemented_windows), "Window function not implemented or misspelled"
+    corner_function = corner_hann_window
+    center_edge_function = top_hann_window
+
     n_pix = n_side * patch_size
-    out = np.empty((n_pix, n_pix), dtype=float32)
+    out = np.empty((n_pix, n_pix), dtype=np.float32)
     for i in range(n_side):
         for j in range(n_side):
-            if (i==0):
-                if (j==i):
-                    out[0:patch_size, 0:patch_size] = corner_hann_window(patch_size, patch_size)
-                if (j==n_side-1):
-                    out[0:patch_size, 0:patch_size] = np.rot90(corner_hann_window(patch_size, patch_size),3)
+            if (i==0) and (j==0):
+                out[0:patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size),2)
+            if (i==0) and (j==(n_side-1)):
+                out[0:patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size),1)
+            if (i==n_side-1) and (j==0):
+                out[i*patch_size:(i+1)*patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size), 3)
+            if (i==n_side-1) and (j==n_side-1):
+                out[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size), 0)
+
     
     return out
 
