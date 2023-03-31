@@ -40,6 +40,8 @@ def corner_hann_window(height, width):
 
     return out
 
+
+
 def top_hann_window(height, width):
     """
     :param i: height in pixels
@@ -122,20 +124,38 @@ def build_weighted_mask_array(window_type, patch_size, n_side):
 
     assert (window_type in implemented_windows), "Window function not implemented or misspelled"
     corner_function = corner_hann_window
-    center_edge_function = top_hann_window
+    edge_function = top_hann_window
+    center_function = bartley_hann_window
 
     n_pix = n_side * patch_size
     out = np.empty((n_pix, n_pix), dtype=np.float32)
     for i in range(n_side):
         for j in range(n_side):
-            if (i==0) and (j==0):
-                out[0:patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size),2)
-            if (i==0) and (j==(n_side-1)):
-                out[0:patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size),1)
-            if (i==n_side-1) and (j==0):
-                out[i*patch_size:(i+1)*patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size), 3)
-            if (i==n_side-1) and (j==n_side-1):
-                out[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size), 0)
+            if (i==0):
+                if (j==0):
+                    out[0:patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size),0)
+                elif  (j==(n_side-1)):
+                    out[0:patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size),3)
+                else:
+                    out[0:patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
+                        edge_function(patch_size, patch_size), 0)
+
+            elif (i==n_side-1):
+                if (j==0):
+                    out[i*patch_size:(i+1)*patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size), 1)
+                elif (j==n_side-1):
+                    out[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size), 2)
+                else:
+                    out[i*patch_size:(i+1)*patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
+                        edge_function(patch_size, patch_size), 2)
+            elif (j==0):
+                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
+                    edge_function(patch_size, patch_size), 1)
+            elif (j==(n_side-1)):
+                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
+                    edge_function(patch_size, patch_size), 3)
+            else:
+                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = center_function(patch_size, patch_size)
 
     
     return out

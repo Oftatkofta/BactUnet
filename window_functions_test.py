@@ -17,6 +17,8 @@ w = 288
 
 
 img = build_weighted_mask_array("hann", 288, 3)
+#img2 = 1-img
+#img=img+img2
 
 plt.imshow(img)
 plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[]);
