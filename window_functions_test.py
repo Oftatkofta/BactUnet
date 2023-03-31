@@ -16,7 +16,7 @@ h = 288
 w = 288
 
 
-img = build_weighted_mask_array("hann", 288, 3)
+img = build_weighted_mask_array("hann", 288, 8)
 #img2 = 1-img
 #img=img+img2
 

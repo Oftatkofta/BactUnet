@@ -60,6 +60,72 @@ def top_hann_window(height, width):
 
     return out
 
+
+def corner_step_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a step window
+    """
+    out = np.zeros((height, width), np.float32)
+    out[0:int(height*0.75),0:int(width*0.75)] = 1
+    return out
+
+def top_step_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a step window
+    """
+    out = np.zeros((height, width), np.float32)
+    out[0:int(height*0.75),int(width*0.25):int(width*0.75)]=1
+    return out
+
+def center_step_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a step window
+    """
+    out = np.zeros((height, width), np.float32)
+    out[int(height*0.25):int(height*0.75), int(width*0.25):int(width*0.75)]=1
+    return out
+
+
+def corner_triangular_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a triangular window
+    """
+    out = np.zeros((height, width), np.float32)
+    I = 2/height
+    J = 2/width
+
+    for i in range(height):
+        for j in range(width):
+            out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
+
+    return out
+
+
+def triangular_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a triangular window
+    """
+    out = np.empty((height, width), np.float32)
+    I = 2/height
+    J = 2/width
+
+    for i in range(height):
+        for j in range(width):
+            out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
+
+    return out
+
+
 def bartley_hann_window(height, width):
     """
     :param i: height in pixels
@@ -81,30 +147,8 @@ def bartley_hann_window(height, width):
 
     return out
 
-def triangular_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a triangular window
-    """
-    out = np.empty((height, width), np.float32)
-    I = 2/height
-    J = 2/width
 
-    for i in range(height):
-        for j in range(width):
-            out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
 
-    return out
-
-def step_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a step window
-    """
-    
-    return height
 
 #def _maskgen_helper(i, j, n_side, window_type):
     #returns correct window generator
@@ -120,12 +164,17 @@ def build_weighted_mask_array(window_type, patch_size, n_side):
     
     :return: nupy array of shape (patch_sixe*n_side, patch_sixe*n_side) 
     """
-    implemented_windows = ["hann", "bartley-hann", "triangular", "step"]
 
-    assert (window_type in implemented_windows), "Window function not implemented or misspelled"
-    corner_function = corner_hann_window
-    edge_function = top_hann_window
-    center_function = bartley_hann_window
+    type_dict = {
+        'hann': [corner_hann_window, top_hann_window, hann_window],
+        'step': [corner_step_window, top_step_window, center_step_window]
+    }
+    assert (window_type in type_dict.keys()), "Window function not implemented or misspelled"
+
+
+    corner_function = type_dict[window_type][0]
+    edge_function = type_dict[window_type][1]
+    center_function = type_dict[window_type][2]
 
     n_pix = n_side * patch_size
     out = np.empty((n_pix, n_pix), dtype=np.float32)
