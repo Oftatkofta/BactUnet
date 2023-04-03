@@ -93,8 +93,13 @@ def process_one_file(metadata, stopframe=None):
     pred_a = _predict_arr_a(dic_arr)
     pred_b = _predict_arr_b(dic_arr)
     pred_merge = pred_a*weight_mask_a + pred_b*weight_mask_b
-	
-    return np.stack((pred_a, pred_b, pred_merge), axis=1)
+    pred_a = threshold_prediction_array(pred_a, 0.5)
+    pred_b = threshold_prediction_array(pred_b, 0.5)
+    pred_merge = threshold_prediction_array(pred_merge, 0.5)
+    dic_arr = dic_arr * 255
+    dic_arr = dic_arr.astype('uint8')
+    
+    return np.stack((dic_arr, pred_a, pred_b, pred_merge), axis=1)
 
 
 def run_analysis(infiles, stopframe=None):
@@ -104,7 +109,8 @@ def run_analysis(infiles, stopframe=None):
         fp = os.path.abspath(f)
         metadata = get_metadata(fp)
         arrs = process_one_file(metadata, stopframe)
-        print(arrs.shape)
+        
+       
         savepath = r"F:\BactUnet\prediction_output\final_3frame_and_single_AB"
         tifffile.imwrite(os.path.join(savepath, "AB_"+metadata["filename"]), arrs, imagej=True, resolution=(1. / 2.6755, 1. / 2.6755),
                  metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
