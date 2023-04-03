@@ -200,7 +200,7 @@ def predict_stack(arr, batch_size, model):
     #keras.backend.clear_session()
     y_pred = None
     for i in range(0, len(arr), batch_size):
-        print("Prediction frames: {}-{} of {}".format(i,i+batch_size, arr.shape[0]))
+        print("Predicting patches: {}-{} of {}".format(i,i+batch_size, arr.shape[0]))
         pred = model.predict(arr[i:i + batch_size])
         if y_pred is not None:
             y_pred = np.concatenate((y_pred, pred))
@@ -209,3 +209,11 @@ def predict_stack(arr, batch_size, model):
             y_pred = pred
 
     return y_pred
+
+def threshold_prediction_array(arr, threshold = 0.2):
+    """
+    Thresholds a 32-bit array and returns a binary 8-bit array using the threshold
+    """
+    out = arr > threshold
+    out = out * 255
+    return out.astype('uint8')

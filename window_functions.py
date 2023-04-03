@@ -104,10 +104,36 @@ def corner_triangular_window(height, width):
 
     for i in range(height):
         for j in range(width):
-            out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
+            if (i <= height/2) and (j >= width/2):
+                out[i, j] =  (1 - abs(J*j - 1))
+            elif (i <= height/2) and (j < width/2):
+                out[i, j] = 1
+            elif (i > height/2) and (j < width/2):
+                out[i, j] = (1 - abs(I * i - 1))
+
+            else:
+                out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
 
     return out
 
+def top_triangular_window(height, width):
+    """
+    :param i: height in pixels
+    :param j: height in pixels
+    :return: nupy array of shape (i, j) of a triangular window
+    """
+    out = np.empty((height, width), np.float32)
+    I = 2/height
+    J = 2/width
+
+    for i in range(height):
+        for j in range(width):
+            if (i <= height/2):
+                out[i, j] =  (1 - abs(J*j - 1))
+            else:
+                out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
+
+    return out
 
 def triangular_window(height, width):
     """
@@ -167,7 +193,8 @@ def build_weighted_mask_array(window_type, patch_size, n_side):
 
     type_dict = {
         'hann': [corner_hann_window, top_hann_window, hann_window],
-        'step': [corner_step_window, top_step_window, center_step_window]
+        'step': [corner_step_window, top_step_window, center_step_window],
+        'triangular': [corner_triangular_window, top_triangular_window, triangular_window]
     }
     assert (window_type in type_dict.keys()), "Window function not implemented or misspelled"
 
