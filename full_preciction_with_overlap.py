@@ -24,7 +24,7 @@ model = keras.models.load_model("models/bactunet_V4_3frame_empty_250ep.hdf5", co
 model2 = keras.models.load_model("models/bactunet_V4_single_frame.hdf5", compile=False) #for frames 0 & 239
 #set patch size
 SIZE = 288
-batch_size = 8
+batch_size = 64
 weight_mask_a = build_weighted_mask_array('hann', SIZE, 8)
 weight_mask_b = 1 - weight_mask_a
 
@@ -92,7 +92,11 @@ def process_one_file(metadata, stopframe=None):
     
     pred_a = _predict_arr_a(dic_arr)
     pred_b = _predict_arr_b(dic_arr)
+    
+    tifffile.imwrite(os.path.join(r"D:\Jens\BactUnet\32-bit_pred_AB", "AB_"+metadata["filename"]), np.stack((pred_a, pred_b), axis=1), imagej=True, resolution=(1. / 2.6755, 1. / 2.6755),metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
+	
     pred_merge = pred_a*weight_mask_a + pred_b*weight_mask_b
+	
     pred_a = threshold_prediction_array(pred_a, 0.5)
     pred_b = threshold_prediction_array(pred_b, 0.5)
     pred_merge = threshold_prediction_array(pred_merge, 0.5)
@@ -120,4 +124,4 @@ def run_analysis(infiles, stopframe=None):
 if __name__ == '__main__':
     startpath = r"F:\BactUnet\bactunet_val"
     infiles = list_files(startpath, prettyPrint=False)
-    run_analysis(infiles, stopframe=4)
+    run_analysis(infiles, stopframe=None)
