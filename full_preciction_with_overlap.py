@@ -10,24 +10,31 @@ from window_functions import build_weighted_mask_array
 from quantification_comparrison import list_files, get_metadata
 from thresholded_object_counter import count_bacteria, bg_subtract, threshold_array
 
-if tf.test.gpu_device_name()=='':
-    print('You do not have GPU access.')
-
-else:
-  print('You have GPU access')
+def test_gpu_access():
+    if tf.test.gpu_device_name()=='':
+        print('You do not have GPU access.')
+        return False
+    else:
+        print('You have GPU access')
+        return True
 
 # print the tensorflow version
 print('TensorFlow {}; Keras {}'.format(tf.__version__, keras.__version__))
 
-#load pretrained model
-model = keras.models.load_model("models/bactunet_V4_3frame_1000ep.hdf5", compile=False)
-model2 = keras.models.load_model("models/bactunet_V4_single_frame.hdf5", compile=False) #for frames 0 & 239
+#load pretrained models, one using 3 frames and one using single frames
+model_3frame = keras.models.load_model("models/bactunet_V4_3frame.hdf5", compile=False)
+model_single_frame = keras.models.load_model("models/bactunet_V4_single_frame.hdf5", compile=False) #for frames 0 & 239
+
 #set patch size
 SIZE = 288
 batch_size = 64
+
+#create mask for combining patch A & B predictions.
 weight_mask_a = build_weighted_mask_array('hann', SIZE, 8)
 weight_mask_b = 1 - weight_mask_a
 threshold = 0.9
+
+
 def _predict_arr_a(arr):
     """
     makes patch pattern A (standard) and predicts on 3frame and single frame models 
@@ -36,23 +43,23 @@ def _predict_arr_a(arr):
     first_frame_patch = patch_image(arr[0], SIZE)
     last_frame_patch = patch_image(arr[-1], SIZE)
     
-    pred_arr = predict_stack(dic_arr_patch, batch_size, model)
+    pred_arr = predict_stack(dic_arr_patch, batch_size, model_3frame)
     #print("prediction patch shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     pred_arr = unpatch_stack(pred_arr, 8, 8, 1)[:,0,:,:]
     #print("prediction array shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     
-    first_frame_pred = unpatch_stack(predict_stack(first_frame_patch, batch_size, model2), 8, 8, 1)[:,0,:,:]
-    last_frame_pred = unpatch_stack(predict_stack(last_frame_patch, batch_size, model2), 8, 8, 1)[:,0,:,:]
+    first_frame_pred = unpatch_stack(predict_stack(first_frame_patch, batch_size, model_single_frame), 8, 8, 1)[:, 0, :, :]
+    last_frame_pred = unpatch_stack(predict_stack(last_frame_patch, batch_size, model_single_frame), 8, 8, 1)[:, 0, :, :]
     #print("first frame prediction shape: {} type {} min/max {}/{}".format(first_frame_pred.shape, first_frame_pred.dtype, first_frame_pred.min(), first_frame_pred.max()))
     
     saveme = np.concatenate((first_frame_pred, pred_arr, last_frame_pred), axis=0)
     #print("full prediction shape: {} type {} min/max {}/{}".format(saveme.shape, saveme.dtype, saveme.min(), saveme.max()))
-	
+
     return saveme
     
 def _predict_arr_b(arr):
     """
-    makes patch pattern B (padded) and predicts on 3frame ans single frame models, crops the outpud down to 2304x2304
+    makes patch pattern B (padded) and predicts on 3frame ans single frame models, crops the output down to 2304x2304
     """
     arr = pad_stack(arr, SIZE)
     pad_SIZE = int(SIZE / 2)
@@ -61,18 +68,18 @@ def _predict_arr_b(arr):
     first_frame_patch = patch_image(arr[0], SIZE)
     last_frame_patch = patch_image(arr[-1], SIZE)
     
-    pred_arr = predict_stack(dic_arr_patch, batch_size, model)
-    print("prediction patch shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
+    pred_arr = predict_stack(dic_arr_patch, batch_size, model_3frame)
+    #print("prediction patch shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     pred_arr = unpatch_stack(pred_arr, 9, 9, 1)[:,0,pad_SIZE:-pad_SIZE,pad_SIZE:-pad_SIZE]
-    print("prediction array shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
+    #print("prediction array shape: {} type {} min/max {}/{}".format(pred_arr.shape, pred_arr.dtype, pred_arr.min(), pred_arr.max()))
     
-    first_frame_pred = unpatch_stack(predict_stack(first_frame_patch, batch_size, model2), 9, 9, 1)[:,0,pad_SIZE:-pad_SIZE,pad_SIZE:-pad_SIZE]
-    last_frame_pred = unpatch_stack(predict_stack(last_frame_patch, batch_size, model2), 9, 9, 1)[:,0,pad_SIZE:-pad_SIZE,pad_SIZE:-pad_SIZE]
-    print("first frame prediction shape: {} type {} min/max {}/{}".format(first_frame_pred.shape, first_frame_pred.dtype, first_frame_pred.min(), first_frame_pred.max()))
+    first_frame_pred = unpatch_stack(predict_stack(first_frame_patch, batch_size, model_single_frame), 9, 9, 1)[:, 0, pad_SIZE:-pad_SIZE, pad_SIZE:-pad_SIZE]
+    last_frame_pred = unpatch_stack(predict_stack(last_frame_patch, batch_size, model_single_frame), 9, 9, 1)[:, 0, pad_SIZE:-pad_SIZE, pad_SIZE:-pad_SIZE]
+    #print("first frame prediction shape: {} type {} min/max {}/{}".format(first_frame_pred.shape, first_frame_pred.dtype, first_frame_pred.min(), first_frame_pred.max()))
     
     saveme = np.concatenate((first_frame_pred, pred_arr, last_frame_pred), axis=0)
-    print("full prediction shape: {} type {} min/max {}/{}".format(saveme.shape, saveme.dtype, saveme.min(), saveme.max()))
-	
+    #print("full prediction shape: {} type {} min/max {}/{}".format(saveme.shape, saveme.dtype, saveme.min(), saveme.max()))
+
     return saveme
     
 
