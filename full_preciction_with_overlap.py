@@ -1,4 +1,4 @@
-import pandas as pd
+import argparse
 import tensorflow as tf
 from tensorflow import keras
 import os
@@ -84,15 +84,12 @@ def _predict_arr_b(arr):
     
 
 
-def process_one_file(metadata, stopframe=None):
-    fh = metadata["filepath"]
+def process_one_file(image_path, output_path, **kwargs):
 
-    with TiffFile(fh) as tif:
+    with TiffFile(image_path) as tif:
         arr = tif.asarray()
-
-    if stopframe is not None:
-        arr = arr[0:stopframe, :, :, :]
-
+    #if stopframe is provided slice array
+    arr = arr[0:kwargs.get("stopframe", -1), :, :, :]
 
     dic_arr = arr[:, 0, :, :]
     dic_arr = normalizePercentile(dic_arr, 0.1, 99.9, clip=True)
@@ -100,17 +97,19 @@ def process_one_file(metadata, stopframe=None):
     pred_a = _predict_arr_a(dic_arr)
     pred_b = _predict_arr_b(dic_arr)
     
-    #tifffile.imwrite(os.path.join(r"D:\Jens\BactUnet\32-bit_pred_AB", "AB_"+metadata["filename"]), np.stack((pred_a, pred_b), axis=1), imagej=True, resolution=(1. / 2.6755, 1. / 2.6755),metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
-	
+
     pred_merge = pred_a*weight_mask_a + pred_b*weight_mask_b
-	
-    pred_a = threshold_prediction_array(pred_a, threshold)
-    pred_b = threshold_prediction_array(pred_b, threshold)
+
     pred_merge = threshold_prediction_array(pred_merge, threshold)
     dic_arr = dic_arr * 255
     dic_arr = dic_arr.astype('uint8')
-    
-    return np.stack((dic_arr, pred_a, pred_b, pred_merge), axis=1)
+
+    arrs = np.stack((dic_arr, pred_merge), axis=1)
+
+    tifffile.imwrite(output_path, arrs, imagej=True,
+                     resolution=(1. / 2.6755, 1. / 2.6755),
+                     metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
+    return
 
 
 def run_analysis(infiles, stopframe=None):
@@ -123,12 +122,23 @@ def run_analysis(infiles, stopframe=None):
         
        
         savepath = r"D:\Jens\BactUnet\optimal_prediction_AB_single"
-        tifffile.imwrite(os.path.join(savepath, "AB_"+metadata["filename"]), arrs, imagej=True, resolution=(1. / 2.6755, 1. / 2.6755),
-                 metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
+
 
     return 1
 
-if __name__ == '__main__':
-    startpath = r"F:\BactUnet\bactunet_val"
-    infiles = list_files(startpath, prettyPrint=False)
-    run_analysis(infiles, stopframe=None)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='BactUnet Image Processor')
+    parser.add_argument('image_path', help='Path to the input TIFF image')
+    parser.add_argument('output_path', help='Path to save the processed TIFF image')
+    # Add more arguments as needed, e.g., parser.add_argument('--filter', choices=['blur', 'sharpen'], help='Type of filter to apply')
+
+    args = parser.parse_args()
+
+    # Convert args to a dictionary to pass to the processing function
+    process_image(**vars(args))
+
+
+if __name__ == "__main__":
+    main()
