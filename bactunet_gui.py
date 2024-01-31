@@ -25,6 +25,7 @@ def run_analysis():
 
     # Here, you can call your analysis script function and pass the input_file and full_output_path
     # For example: process_image(input_file, full_output_path)
+    
     process_one_file(input_file, full_output_path)
     messagebox.showinfo("Success", "Analysis completed successfully.")
 

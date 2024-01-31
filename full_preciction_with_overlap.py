@@ -84,12 +84,12 @@ def _predict_arr_b(arr):
     
 
 
-def process_one_file(image_path, output_path, **kwargs):
+def process_one_file(image_path, output_path, stopframe=None):
 
     with TiffFile(image_path) as tif:
         arr = tif.asarray()
     #if stopframe is provided slice array
-    if kwargs["stopframe"] is not None:
+    if stopframe is not None:
         arr = arr[0:int(stopframe), :, :, :]
 
     dic_arr = arr[:, 0, :, :]
