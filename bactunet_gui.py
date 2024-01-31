@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
-
+from tkinter import filedialog, messagebox, scrolledtext
+from full_preciction_with_overlap import process_one_file
 def select_input_file():
     file_path = filedialog.askopenfilename()
     input_entry.delete(0, tk.END)
@@ -25,11 +25,12 @@ def run_analysis():
 
     # Here, you can call your analysis script function and pass the input_file and full_output_path
     # For example: process_image(input_file, full_output_path)
+    process_one_file(input_file, full_output_path)
     messagebox.showinfo("Success", "Analysis completed successfully.")
 
 # Set up the main application window
 root = tk.Tk()
-root.title("Image Analysis Tool")
+root.title("BactUnet Analysis Tool")
 
 # Create and place widgets for input file selection
 input_entry = tk.Entry(root, width=50)
@@ -53,6 +54,7 @@ filename_entry.insert(0, "output_filename.tif") # You can specify a default file
 # Create and place the Run Analysis button
 run_button = tk.Button(root, text="Run Analysis", command=run_analysis)
 run_button.pack()
+
 
 # Start the GUI event loop
 root.mainloop()
