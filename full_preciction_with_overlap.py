@@ -89,7 +89,8 @@ def process_one_file(image_path, output_path, **kwargs):
     with TiffFile(image_path) as tif:
         arr = tif.asarray()
     #if stopframe is provided slice array
-    arr = arr[0:int(kwargs.get("stopframe", -1)), :, :, :]
+    if kwargs["stopframe"] is not None:
+        arr = arr[0:int(stopframe), :, :, :]
 
     dic_arr = arr[:, 0, :, :]
     dic_arr = normalizePercentile(dic_arr, 0.1, 99.9, clip=True)
@@ -132,7 +133,7 @@ def main():
     parser = argparse.ArgumentParser(description='BactUnet Image Processor')
     parser.add_argument('image_path', help='Path to the input TIFF image')
     parser.add_argument('output_path', help='Path to save the processed TIFF image')
-    parser.add_argument('stopframe', help='frame to stop at')
+    parser.add_argument('--stopframe', help='frame to stop at')
     # Add more arguments as needed, e.g., parser.add_argument('--filter', choices=['blur', 'sharpen'], help='Type of filter to apply')
 
     args = parser.parse_args()
