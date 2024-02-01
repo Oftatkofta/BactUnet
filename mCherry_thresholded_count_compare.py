@@ -58,29 +58,29 @@ def threshold_array(arr):
 
     return out.astype('uint8')
 
+if __name__ == '__main__':
+    infiles = {
+            "BT0398_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT0398_OGM\C2-anodisc_OGM_1_MMStack_Default.ome.tif",
+            "BT402_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT402_ENR_wt\C2-BT0402-anodisc_ENR_wt_1_MMStack_Default.tif",
+            "BT403_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT403_OGM_wt\C2-anodisc_OGM_wt_1_MMStack_Default.ome.tif",
+            "BT404_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT404_ENRRT_wt\C2_anodisc_ENR+RT_wt_1_MMStack_Default_1.ome.tif"
+                }
 
-infiles = {
-        "BT0398_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT0398_OGM\C2-anodisc_OGM_1_MMStack_Default.ome.tif",
-        "BT402_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT402_ENR_wt\C2-BT0402-anodisc_ENR_wt_1_MMStack_Default.tif",
-        "BT403_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT403_OGM_wt\C2-anodisc_OGM_wt_1_MMStack_Default.ome.tif",
-        "BT404_Ch2":r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\BT404_ENRRT_wt\C2_anodisc_ENR+RT_wt_1_MMStack_Default_1.ome.tif"
-            }
+    outdir = r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\mcherry_count_temp"
 
-outdir = r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\mcherry_count_temp"
+    kernel = ellipsoid_kernel((25, 25), 75)
+    counts = None
 
-kernel = ellipsoid_kernel((25, 25), 75)
-counts = None
-
-for k in infiles.keys():
-    with TiffFile(infiles[k]) as tif:
-        arr =  tif.asarray()[1:-1,:,:]
-    bg_arr = bg_subtract(arr)
-    bg_arr = threshold_array(bg_arr)
-    raw_nbact = count_bacteria(bg_arr)
-    tifffile.imwrite(os.path.join(outdir, k+".tif"), bg_arr)
-    df = pd.DataFrame({k:raw_nbact})
-    if counts is None:
-        counts = df
-    else:
-        counts = pd.concat((counts,df), axis=1)
-counts.to_csv(os.path.join(outdir,"counts.csv"), index=False)
+    for k in infiles.keys():
+        with TiffFile(infiles[k]) as tif:
+            arr =  tif.asarray()[1:-1,:,:]
+        bg_arr = bg_subtract(arr)
+        bg_arr = threshold_array(bg_arr)
+        raw_nbact = count_bacteria(bg_arr)
+        tifffile.imwrite(os.path.join(outdir, k+".tif"), bg_arr)
+        df = pd.DataFrame({k:raw_nbact})
+        if counts is None:
+            counts = df
+        else:
+            counts = pd.concat((counts,df), axis=1)
+    counts.to_csv(os.path.join(outdir,"counts.csv"), index=False)
