@@ -10,7 +10,9 @@ from skimage.filters import gaussian
 
 import os
 
-def apply_rolling_ball(frame):
+def apply_rolling_ball(frame, kernel=None):
+    if kernel is None:
+        kernel = ellipsoid_kernel((25, 25), 75)
     background = rolling_ball(frame, kernel=kernel)
     filtered_image = frame - background
     return filtered_image

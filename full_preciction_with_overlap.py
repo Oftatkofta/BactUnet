@@ -8,7 +8,7 @@ import numpy as np
 from preprocessing import normalizePercentile, unpatch_stack, predict_stack, patch_stack, patch_image, pad_stack, threshold_prediction_array
 from window_functions import build_weighted_mask_array
 from quantification_comparrison import list_files, get_metadata
-from thresholded_object_counter import count_bacteria, bg_subtract, threshold_array
+from mCherry_thresholded_count_compare import bg_subtract
 
 def test_gpu_access():
     if tf.test.gpu_device_name()=='':
@@ -94,7 +94,9 @@ def process_one_file(image_path, output_path, stopframe=None):
 
     dic_arr = arr[:, 0, :, :]
     dic_arr = normalizePercentile(dic_arr, 0.1, 99.9, clip=True)
-    
+    mcherry_arr = bg_subtract(arr[:, 1, :, :])
+
+
     pred_a = _predict_arr_a(dic_arr)
     pred_b = _predict_arr_b(dic_arr)
     
@@ -105,11 +107,17 @@ def process_one_file(image_path, output_path, stopframe=None):
     dic_arr = dic_arr * 255
     dic_arr = dic_arr.astype('uint8')
 
-    arrs = np.stack((dic_arr, pred_merge), axis=1)
+    arrs = np.stack((dic_arr, pred_merge, mcherry_arr), axis=1)
+
+    # Channel colors: List of ARGB tuples for gray, green, red
+    channel_colors = [0xFF808080,  # Gray
+                      0xFF00FF00,  # Green
+                      0xFFFF0000]  # Red
 
     tifffile.imwrite(output_path, arrs, imagej=True,
                      resolution=(1. / 2.6755, 1. / 2.6755),
-                     metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
+                     metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX',
+                               'mode':'composite', 'LUTs':channel_colors})
     return
 
 

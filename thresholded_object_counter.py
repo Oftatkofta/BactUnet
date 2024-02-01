@@ -24,17 +24,20 @@ def get_both_arrays(fh):
 
 kernel = ellipsoid_kernel((25, 25), 75)
 
-def apply_rolling_ball(frame):
+def apply_rolling_ball(frame, kernel=None):
+    if kernel is None:
+        kernel = ellipsoid_kernel((25, 25), 75)
     background = rolling_ball(frame, kernel=kernel)
     filtered_image = frame - background
     return filtered_image
 
 def bg_subtract(arr):
     bg_arr = []
+    kernel = ellipsoid_kernel((25, 25), 75)
     for i in range(len(arr)):
         print("rolling with frame: ", i)
         a = gaussian(arr[i], sigma=0.8, preserve_range=True)
-        a = apply_rolling_ball(a)
+        a = apply_rolling_ball(a, kernel)
         bg_arr.append(a)
     return bg_arr
 
