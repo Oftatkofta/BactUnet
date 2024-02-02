@@ -109,16 +109,25 @@ def process_one_file(image_path, output_path, stopframe=None):
 
     arrs = np.stack((dic_arr, pred_merge, mcherry_arr), axis=1)
 
-    # Channel colors: List of RGB tuples
-    channel_colors = [(128, 128, 128), (0, 255, 0), (0, 0, 255)]  # Example for red, green, blue
-
-    # Convert channel colors to ImageJ's format (ARGB integer)
-    argb_colors = [0xFF000000 | (r << 16) | (g << 8) | b for r, g, b in channel_colors]
+    # Intensity value range
+    val_range = np.arange(256, dtype=np.uint8)
+    # Gray LUT
+    lut_gray = np.stack([val_range, val_range, val_range])
+    # Red LUT
+    lut_red = np.zeros((3, 256), dtype=np.uint8)
+    lut_red[0, :] = val_range
+    # Green LUT
+    lut_green = np.zeros((3, 256), dtype=np.uint8)
+    lut_green[1, :] = val_range
+    
+    # Create ijmetadata kwarg
+    ijmeta = {'LUTs': [lut_gray, lut_green, lut_red]}
 
     tifffile.imwrite(output_path, arrs, imagej=True,
                      resolution=(1. / 2.6755, 1. / 2.6755),
                      metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX',
-                               'mode':'composite', 'LUTs':channel_colors})
+                               'mode':'composite'},
+                               ijmetadata=ijmeta)
     return
 
 
