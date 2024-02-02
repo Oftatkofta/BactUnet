@@ -109,10 +109,11 @@ def process_one_file(image_path, output_path, stopframe=None):
 
     arrs = np.stack((dic_arr, pred_merge, mcherry_arr), axis=1)
 
-    # Channel colors: List of ARGB tuples for gray, green, red
-    channel_colors = [0xFF808080,  # Gray
-                      0xFF00FF00,  # Green
-                      0xFFFF0000]  # Red
+    # Channel colors: List of RGB tuples
+    channel_colors = [(128, 128, 128), (0, 255, 0), (0, 0, 255)]  # Example for red, green, blue
+
+    # Convert channel colors to ImageJ's format (ARGB integer)
+    argb_colors = [0xFF000000 | (r << 16) | (g << 8) | b for r, g, b in channel_colors]
 
     tifffile.imwrite(output_path, arrs, imagej=True,
                      resolution=(1. / 2.6755, 1. / 2.6755),
