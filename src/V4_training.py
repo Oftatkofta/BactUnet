@@ -1,39 +1,44 @@
-def get_model_memory_usage(batch_size, model):
-    import numpy as np
-    try:
-        from keras import backend as K
-    except:
-        from tensorflow.keras import backend as K
+import tensorflow as tf
+import os
+import tifffile as tiff
+import numpy as np
+from matplotlib import pyplot as plt
+from patchify import patchify
+from tensorflow import keras
+import logging
 
-    shapes_mem_count = 0
-    internal_model_mem_count = 0
-    for l in model.layers:
-        layer_type = l.__class__.__name__
-        if layer_type == 'Model':
-            internal_model_mem_count += get_model_memory_usage(batch_size, l)
-        single_layer_mem = 1
-        out_shape = l.output_shape
-        if type(out_shape) is list:
-            out_shape = out_shape[0]
-        for s in out_shape:
-            if s is None:
-                continue
-            single_layer_mem *= s
-        shapes_mem_count += single_layer_mem
+# Import helper functions from preprocessing.py, window_functions.py, and helper_functions.py
+from preprocessing import patch_image, patch_stack, normalizePercentile, normalize_mi_ma, normalizeMinMax, checkEmptyMask
+from window_functions import hanning_window, hamming_window, blackman_window, kaiser_window, bartlett_window, apply_window
+from helper_functions import get_model_memory_usage
 
-    trainable_count = np.sum([K.count_params(p) for p in model.trainable_weights])
-    non_trainable_count = np.sum([K.count_params(p) for p in model.non_trainable_weights])
 
-    number_size = 4.0
-    if K.floatx() == 'float16':
-        number_size = 2.0
-    if K.floatx() == 'float64':
-        number_size = 8.0
+# Set up logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    total_memory = number_size * (batch_size * shapes_mem_count + trainable_count + non_trainable_count)
-    gbytes = np.round(total_memory / (1024.0 ** 3), 3) + internal_model_mem_count
-    return gbytes
+pmin=0.1
+pmax=99.9
+
+# Check if GPU is available
+gpus = tf.config.list_physical_devices('GPU')
+if not gpus:
+    print('You do not have GPU access.')
+else:
+    print('You have GPU access')
+    for gpu in gpus:
+        print(f"GPU: {gpu.name}")
+
+# Print TensorFlow and Keras versions
+print(f"TensorFlow: {tf.__version__}; Keras: {keras.__version__}")
+
+# Display GPU device name if available
+gpu_device_name = tf.test.gpu_device_name()
+if gpu_device_name:
+    print(f"GPU Device: {gpu_device_name}")
+else:
+    print("No GPU device found.")
     
+
 train_path = r"Bactnet/Training data/stacks"
 
 batch_size = 16
@@ -299,6 +304,206 @@ history = model.fit(
         callbacks=callbacks_list)
 
 model.save(r"models/"+model_name+".hdf5") 
+"""
+At this point you might jump back in an add some training epochs, depending on performance.
+"""
+#model.load_weights(r"models/bactunet_3frame_local_dice.hdf5")
+
+#Continue training 
+
+
+#Use Mode = max for accuracy and min for loss. 
+checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+
+#https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping
+early_stop = EarlyStopping(monitor='val_loss', patience=100, verbose=1)
+#This callback will stop the training when there is no improvement in
+# the validation loss for 10 consecutive epochs.
+
+#CSVLogger logs epoch, acc, loss, val_acc, val_loss
+log_csv = CSVLogger(r'models/bactnet_v3_logs.csv', separator=',', append=False)
+
+callbacks_list = [checkpoint, early_stop, log_csv]
+
+#We can now use these generators to train our model. 
+#Give this a name so we can call it later for plotting loss, accuracy etc. as a function of epochs.
+
+history = model.fit(
+        my_generator,
+        steps_per_epoch=steps_per_epoch,   
+        epochs=1000,
+        validation_data=validation_datagen,
+        validation_steps=steps_per_epoch,
+        callbacks=callbacks_list)
+
+model.save(r"models/bactunet_noEmpty_final_alldata.hdf5") 
+
+# ##################################
+# #IOU
+y_pred = model.predict(X_test)
+IOUs = []
+dices = []
+thresh = []
+
+for threshold in range(0, 11):
+  threshold = threshold/10
+  y_pred_thresholded = y_pred > threshold
+  intersection = np.logical_and(y_test, y_pred_thresholded)
+  union = np.logical_or(y_test, y_pred_thresholded)
+  iou_score = np.sum(intersection) / np.sum(union)
+  dice_c = 0#losses.dice_coef(y_test, y_pred)
+  print("IoU socre is: ", round(iou_score, 4), "Dice coeff is: ", round(dice_c, 4),"at threshold: ", threshold)
+  IOUs.append(iou_score)
+  thresh.append(threshold)
+  dices.append(dice_c)
+
+#plot IOUs vs threshold
+plt.plot(thresh, IOUs, 'r', label='IOU')
+plt.plot(thresh, dices, 'b', label='Dice coeff')
+plt.title('IOU & dice vs threshold')
+plt.xlabel('Threshold')
+plt.ylabel('IOU')
+plt.show()
+
+#######################################################################
+#Predict on a few images
+#model = get_model()
+#model.load_weights('mitochondria_50_plus_100_epochs.hdf5') #Trained for 50 epochs and then additional 100
+#model.load_weights('mitochondria_gpu_tf1.4.hdf5')  #Trained for 50 epochs¨
+#import pickle
+#with open("/content/gdrive/MyDrive/Colab Notebooks/BT0403/model_folder/bactunet_3frame_25ep_history") as fh:
+#    history = pickle.load(fh)
+
+idx=random.randint(0, (len(X_test)))
+
+plt.figure(figsize=(16, 8))
+plt.subplot(131)
+plt.title('Testing Image')
+plt.imshow(X_test[idx, 1, :, : ])
+plt.subplot(132)
+plt.title('Testing Label')
+plt.imshow(y_test[idx, 0, : , :])
+plt.subplot(133)
+plt.title('Prediction on test image')
+plt.imshow(y_pred[idx, 0, :, :])
+
+plt.show()
+
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
+plt.plot(epochs, loss, 'y', label='Training loss')
+plt.plot(epochs, val_loss, 'r', label='Validation loss')
+plt.title('Training and validation loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+acc = history.history['dice_coef']
+#acc = history.history['accuracy']
+val_acc = history.history['val_dice_coef']
+#val_acc = history.history['val_accuracy']
+
+plt.plot(epochs, acc, 'y', label='Training acc')
+plt.plot(epochs, val_acc, 'r', label='Validation acc')
+plt.title('Training and validation accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+import math 
+from patchify import unpatchify
+
+#######
+#THERE IS A BUG HERE!!! FIX PREDICTION AND UNPATCHING
+
+
+def _createOutArr(shape, nrows, ncols, nchannels):
+    out_height = int(nrows * shape[-2])
+    out_width = int(ncols * shape[-1])
+    out_frames = int(shape[0] / (nrows * ncols))
+    outshape = (out_frames, nchannels, out_height, out_width)
+    out_arr = np.empty(outshape, dtype=np.float32)
+
+    return out_arr
+
+def unpatcher(arr, nrows, ncols, nchannels=1):
+    out_arr = _createOutArr(arr.shape, nrows, ncols, nchannels)
+    patch_h = arr.shape[-2]
+    patch_w = arr.shape[-1]
+    n = 0
+    for frame in range(out_arr.shape[0]):
+        for i in range(nrows):
+            for j in range(ncols):
+                y = patch_h * i
+                x = patch_w * j
+                out_arr[frame, :, y:y+patch_h, x:x+patch_w] = arr[n]
+                n += 1
+
+    return out_arr
+
+#load unseen data
+
+validation_image_directory = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\Bactnet\Training data\stacks\predict"
+result_folder = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\_results"
+
+val_image_dataset = []
+val_mask_dataset = []
+pred_mask_dataset = []
+
+images = os.listdir(validation_image_directory)
+
+for i, image_name in enumerate(images):    #Remember enumerate method adds a counter and returns the enumerate object
+    if (image_name.split('.')[1] == 'tif'):
+        
+        image = tiff.imread(os.path.join(validation_image_directory, image_name))
+        original_shape = image.shape
+        patch = patch_stack(image, SIZE)
+        
+        patch = normalizePercentile(patch, 0.1, 99.9, clip=True)
+        pred_mask_patch = model.predict(patch)
+        print(image_name, original_shape, patch.shape, pred_mask_patch.shape)
+        #pred_mask_patch = pred_mask_patch[:, 0, :,:]
+        image = np.expand_dims(patch[:, 1, :,:], axis=1)
+        patch = np.concatenate((image, pred_mask_patch), axis=1)
+        unpatched = unpatcher(patch, 8, 8, 2)
+        print(patch.shape)
+        tiff.imwrite(os.path.join(result_folder, image_name), unpatched, imagej=True, resolution=(1./2.6755, 1./2.6755),
+                      metadata={'unit': 'um', 'finterval': 15,
+                                'axes': 'TCYX'})
+        
+        #pred_mask = unpatch_stack(pred_mask_patch, original_shape)
+        #tiff.imsave(os.path.join(result_folder, image_name), pred_mask_patch)
+        #val_image_dataset.append(image)
+        #pred_mask_dataset.append(pred_mask)
+        
+        
+#Let's try the full movies
+
+image_directory = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\Bactnet"
+result_folder = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\_results"
+filelist = []
+
+for dir in os.listdir(image_directory):
+    for file in os.listdir(os.path.join(image_directory, dir)):
+        if ".tif" in file:
+            loadme = os.path.join(image_directory, dir, file)
+            image = tiff.imread(loadme)
+            original_shape = image.shape
+            patch = patch_stack(image, SIZE)
+            patchlist = np.split(patch, 238)
+            
+            for i, p in enumerate(patchlist):
+                p = normalizePercentile(p, 0.1, 99.9, clip=True)
+                pred_mask_patch = model.predict(p)
+                unpatched = unpatcher(pred_mask_patch, 8, 8, 1)
+                #unpatched = unpatched.astype('uint8')
+                savename = file.split(".")[0]+ "_V3_" + str(i+1) + ".tif"
+                print(savename, unpatched.shape)
+                tiff.imwrite(os.path.join(result_folder, savename), unpatched, imagej=True, resolution=(1./2.6755, 1./2.6755),
+                             metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
 
 
 
