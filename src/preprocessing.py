@@ -1,219 +1,167 @@
 import numpy as np
-import math
-from patchify import patchify, unpatchify
-from tensorflow import keras
+import cv2
+import logging
+import argparse
 
+# Set up logging configuration
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def patch_image(img, SIZE=288):
-    # breaks up image to SIZExSIZE non-overlapping patches, returns reshaped array
-    # img.shape = (2304, 2304)
-    patches = patchify(img, patch_size=(SIZE, SIZE), step=(SIZE, SIZE))
-    # patches.shape = (8, 8, 288, 288)
-    # return.shape = (64, 1, 288 ,288)
-    return patches.reshape(patches.shape[0] * patches.shape[1], -1, SIZE, SIZE)
-
-
-def patch_stack(img, SIZE=288, DEPTH=3, STRIDE=1):
-    # breaks up image to SIZExSIZE non-overlapping patches, returns reshaped array
-    # img.shape = (12, 2304, 2304)
-    patches = patchify(img, patch_size=(DEPTH, SIZE, SIZE), step=(STRIDE, SIZE, SIZE))
-    # patches.shape = (10, 8, 8, 3, 288, 288)
-
-    # return.shape = (64, 3, 288 ,288)
-    return patches.reshape(patches.shape[0] * patches.shape[1] * patches.shape[2], -1, SIZE, SIZE)
-
-
-def _unpatch_stack(patches, original_shape, DEPTH=3):
-    #DELETE LATER
-    n_frames = original_shape[0] - (DEPTH - 1)
-    side_length = int(math.sqrt(patches.shape[0] / n_frames))
-    patches = patches.reshape(n_frames, side_length, side_length, DEPTH, patches.shape[2], -1)
-
-    return unpatchify(patches, original_shape)
-
-
-def pad_stack(arr, SIZE):
+# Function to normalize image data to the range [0, 1]
+def normalize_image(image):
     """
-    Zero-pads arr with 1/2 SIZE in x and y so that when patched the patches are
-    centered on the seams of the patches from the unpadded image
+    Normalize the pixel values of an image to the range [0, 1].
+
+    Parameters:
+    image (numpy.ndarray): The input image.
+
+    Returns:
+    numpy.ndarray: The normalized image.
     """
+    epsilon = 1e-8  # Small value to prevent division by zero
+    logging.debug(f"Normalizing image with shape {image.shape}")
+    # Check if image has non-zero range to avoid zero division
+    if np.ptp(image) == 0:
+        logging.warning("Image has no range. Returning a zeroed image.")
+        return np.zeros_like(image)
+    # Normalize the image by subtracting the minimum and dividing by the range
+    return (image - np.min(image)) / (np.ptp(image) + epsilon)
 
-    pad_SIZE = int(SIZE / 2)
-    expanded_image = np.pad(arr, ((0, 0), (pad_SIZE, pad_SIZE), (pad_SIZE, pad_SIZE)))
-
-    return expanded_image
-
-
-def crop_stack(arr, SIZE):
+# Function to apply Gaussian blur to an image
+def apply_gaussian_blur(image, kernel_size=(5, 5), sigma=0):
     """
-    Undoes the padding from pad_stack, crops out the center, removing a 1/2 SIZE broder from around the stack
+    Apply Gaussian blur to an image to reduce noise.
+
+    Parameters:
+    image (numpy.ndarray): The input image.
+    kernel_size (tuple): The size of the Gaussian kernel.
+    sigma (float): The standard deviation for the Gaussian kernel. If sigma is set to 0, it will be calculated automatically based on the kernel size.
+
+    Returns:
+    numpy.ndarray: The blurred image.
     """
-    pad_SIZE = int(SIZE / 2)
+    logging.debug(f"Applying Gaussian blur with kernel size {kernel_size} and sigma {sigma}")
+    # Ensure kernel size is valid (must be odd, positive, and non-negative)
+    if kernel_size[0] % 2 == 0 or kernel_size[1] % 2 == 0 or kernel_size[0] <= 0 or kernel_size[1] <= 0:
+        logging.error("Kernel size must be odd and positive. Please provide a valid kernel size.")
+        raise ValueError("Kernel size must be odd and positive.")
+    # Apply Gaussian blur using the specified kernel size and sigma value
+    return cv2.GaussianBlur(image, kernel_size, sigma)
 
-    if len(arr.shape) == 3:
-        t, y, x = arr.shape
-        stopY = y - pad_SIZE
-        stopX = x - pad_SIZE
-        return arr[:, pad_SIZE:stopY, pad_SIZE:stopX]
-
-    if len(arr.shape) == 4:
-        t, c, y, x = arr.shape
-        stopY = y - pad_SIZE
-        stopX = x - pad_SIZE
-        return arr[:, :, pad_SIZE:stopY, pad_SIZE:stopX]
-
-def normalizePercentile(x, pmin=1, pmax=99.8, axis=None, clip=True, eps=1e-20, dtype=np.float32):
-    """This function is adapted from Martin Weigert"""
-    """Percentile-based image normalization."""
-
-    mi = np.percentile(x, pmin, axis=axis, keepdims=True)
-    ma = np.percentile(x, pmax, axis=axis, keepdims=True)
-    return normalize_mi_ma(x, mi, ma, clip=clip, eps=eps, dtype=dtype)
-
-
-def normalize_mi_ma(x, mi, ma, clip=True, eps=1e-20, dtype=np.float32):  # dtype=np.float32
-    """This function is adapted from Martin Weigert"""
-    if dtype is not None:
-        x = x.astype(dtype, copy=False)
-        mi = dtype(mi) if np.isscalar(mi) else mi.astype(dtype, copy=False)
-        ma = dtype(ma) if np.isscalar(ma) else ma.astype(dtype, copy=False)
-        eps = dtype(eps)
-
-    try:
-        import numexpr
-        x = numexpr.evaluate("(x - mi) / ( ma - mi + eps )")
-    except ImportError:
-        x = (x - mi) / (ma - mi + eps)
-
-    if clip:
-        x = np.clip(x, 0, 1)
-
-    return x
-
-
-def normalizeMinMax(x, dtype=np.float32):
-    # Simple normalization to min/max for the Mask
-    x = x.astype(dtype, copy=False)
-    x = (x - np.amin(x)) / (np.amax(x) - np.amin(x))
-    return x
-
-
-def checkEmptyMask(arr):
+# Function to resize an image to a specified size
+def resize_image(image, size=(128, 128)):
     """
-    Checks if any patches are without masks, previously used to discard patches with no mask.
-    returns list of indexes where mask is all zeros
+    Resize an image to the given size.
+
+    Parameters:
+    image (numpy.ndarray): The input image.
+    size (tuple): The desired size (width, height).
+
+    Returns:
+    numpy.ndarray: The resized image.
     """
+    logging.debug(f"Resizing image from shape {image.shape} to size {size}")
+    # Check if the desired size is valid
+    if any(dim <= 0 for dim in size):
+        logging.error("Size values must be positive. Please provide a valid size.")
+        raise ValueError("Size values must be positive.")
+    # Resize the image using linear interpolation for better quality
+    return cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
 
-    out = []
-    for i in range(arr.shape[0]):
-        if not arr[i].any():
-            out.append(i)
-
-    return out
-
-
-def unpatch_stack(arr, nrows, ncols, nchannels=1):
+# Function to apply thresholding to an image
+def apply_threshold(image, threshold_value=127):
     """
-    Undoes what patch_stack does.
-    Takes an numpy array of patches and stitches them back together.
+    Apply a binary threshold to an image.
+
+    Parameters:
+    image (numpy.ndarray): The input image.
+    threshold_value (int): The threshold value.
+
+    Returns:
+    numpy.ndarray: The thresholded image.
     """
+    logging.debug(f"Applying threshold with value {threshold_value}")
+    # Ensure the image is in a valid format for thresholding
+    if image.dtype == np.float32 or image.dtype == np.float64:
+        logging.warning("Converting image from float format to 8-bit format for thresholding.")
+        image = (image * 255).astype(np.uint8)
+    elif image.dtype != np.uint8:
+        logging.error("Unsupported image format for thresholding. Expected uint8 or float.")
+        raise TypeError("Unsupported image format for thresholding. Expected uint8 or float.")
+    # Apply binary thresholding to the image
+    _, thresholded_image = cv2.threshold(image, threshold_value, 255, cv2.THRESH_BINARY)
+    return thresholded_image
 
-    out_arr = _createOutArr(arr.shape, nrows, ncols, nchannels)
-    patch_h = arr.shape[-2]
-    patch_w = arr.shape[-1]
-    n = 0
-    for frame in range(out_arr.shape[0]):
-        for i in range(nrows):
-            for j in range(ncols):
-                y = patch_h * i
-                x = patch_w * j
-                out_arr[frame, :, y:y + patch_h, x:x + patch_w] = arr[n]
-                n += 1
-
-    return out_arr
-
-def _createOutArr(shape, nrows, ncols, nchannels):
-    out_height = int(nrows * shape[-2])
-    out_width = int(ncols * shape[-1])
-    out_frames = int(shape[0] / (nrows * ncols))
-
-    outshape = (out_frames, nchannels, out_height, out_width)
-
-    out_arr = np.empty(outshape, dtype=np.float32)
-
-    return out_arr
-
-
-def bin_frames_in_three(img):
-    # Bins frames into 3-frame chunks with stride 1
-    # Assumes img.shape = (frames, x, y)
-    # returns (frames-2, 3, x, y)
-    out = np.zeros((img.shape[0] - 2, 3, img.shape[1], img.shape[2]), dtype=np.float32)
-    for frame in range(0, img.shape[0] - 2):
-        out[frame] = img[frame:frame + 3]
-    return out
-
-
-
-def get_model_memory_usage(batch_size, model):
-    import numpy as np
-    try:
-        from keras import backend as K
-    except:
-        from tensorflow.keras import backend as K
-
-    shapes_mem_count = 0
-    internal_model_mem_count = 0
-    for l in model.layers:
-        layer_type = l.__class__.__name__
-        if layer_type == 'Model':
-            internal_model_mem_count += get_model_memory_usage(batch_size, l)
-        single_layer_mem = 1
-        out_shape = l.output_shape
-        if type(out_shape) is list:
-            out_shape = out_shape[0]
-        for s in out_shape:
-            if s is None:
-                continue
-            single_layer_mem *= s
-        shapes_mem_count += single_layer_mem
-
-    trainable_count = np.sum([K.count_params(p) for p in model.trainable_weights])
-    non_trainable_count = np.sum([K.count_params(p) for p in model.non_trainable_weights])
-
-    number_size = 4.0
-    if K.floatx() == 'float16':
-        number_size = 2.0
-    if K.floatx() == 'float64':
-        number_size = 8.0
-
-    total_memory = number_size * (batch_size * shapes_mem_count + trainable_count + non_trainable_count)
-    gbytes = np.round(total_memory / (1024.0 ** 3), 3) + internal_model_mem_count
-    return gbytes
-
-
-def predict_stack(arr, batch_size, model):
+# Function to perform edge detection using Canny
+def apply_canny_edge_detection(image, threshold1=100, threshold2=200):
     """
-    Performs prediction on all images in arr using model in increments of batch_size
-    Assumes patches of a ahpe where N is 0th axis.
-    """
-    #keras.backend.clear_session()
-    y_pred = None
-    for i in range(0, len(arr), batch_size):
-        print("Predicting patches: {}-{} of {}".format(i,i+batch_size, arr.shape[0]))
-        pred = model.predict(arr[i:i + batch_size])
-        if y_pred is not None:
-            y_pred = np.concatenate((y_pred, pred))
+    Apply Canny edge detection to an image.
 
-        else:
-            y_pred = pred
+    Parameters:
+    image (numpy.ndarray): The input image.
+    threshold1 (int): The first threshold for the hysteresis procedure.
+    threshold2 (int): The second threshold for the hysteresis procedure.
 
-    return y_pred
+    Returns:
+    numpy.ndarray: The image with edges detected.
+    """
+    logging.debug(f"Applying Canny edge detection with thresholds {threshold1} and {threshold2}")
+    # Ensure the image is in 8-bit format for edge detection
+    if image.dtype == np.float32 or image.dtype == np.float64:
+        logging.warning("Converting image from float format to 8-bit format for Canny edge detection.")
+        image = (image * 255).astype(np.uint8)
+    elif image.dtype != np.uint8:
+        logging.error("Unsupported image format for Canny edge detection. Expected uint8 or float.")
+        raise TypeError("Unsupported image format for Canny edge detection. Expected uint8 or float.")
+    # Use Canny edge detection to find edges in the image
+    return cv2.Canny(image, threshold1, threshold2)
 
-def threshold_prediction_array(arr, threshold = 0.2):
-    """
-    Thresholds a 32-bit array and returns a binary 8-bit array using the threshold
-    """
-    out = arr > threshold
-    out = out * 255
-    return out.astype('uint8')
+# Example usage
+def main():
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Image preprocessing script")
+    parser.add_argument("image_path", type=str, help="Path to the input image file")
+    args = parser.parse_args()
+
+    # Read an image from file
+    logging.info(f"Reading image from file '{args.image_path}'")
+    image = cv2.imread(args.image_path, cv2.IMREAD_GRAYSCALE)
+
+    # Check if the image was successfully loaded
+    if image is None:
+        logging.error("The image file could not be loaded. Please check the file path and try again.")
+        print("Error: The image file could not be loaded. Please check the file path and try again.")
+        return
+
+    # Normalize the image to the range [0, 1]
+    logging.info("Normalizing the image")
+    normalized_image = normalize_image(image)
+    
+    # Apply Gaussian blur to reduce noise
+    logging.info("Applying Gaussian blur to the image")
+    blurred_image = apply_gaussian_blur(normalized_image)
+
+    # Resize the image to a fixed size of 128x128 pixels
+    logging.info("Resizing the image")
+    resized_image = resize_image(blurred_image)
+
+    # Apply binary thresholding to the resized image
+    logging.info("Applying thresholding to the image")
+    thresholded_image = apply_threshold(resized_image)
+
+    # Apply Canny edge detection to find edges in the thresholded image
+    logging.info("Applying Canny edge detection to the image")
+    edges = apply_canny_edge_detection(thresholded_image)
+
+    # Display the results using OpenCV windows
+    logging.info("Displaying the results")
+    cv2.imshow('Original Image', image)  # Original grayscale image
+    cv2.imshow('Normalized Image', normalized_image)  # Normalized image
+    cv2.imshow('Blurred Image', blurred_image)  # Blurred image
+    cv2.imshow('Resized Image', resized_image)  # Resized image
+    cv2.imshow('Thresholded Image', thresholded_image)  # Thresholded image
+    cv2.imshow('Edges', edges)  # Edges detected using Canny
+    cv2.waitKey(0)  # Wait for a key press to close the windows
+    cv2.destroyAllWindows()  # Close all OpenCV windows
+
+if __name__ == "__main__":
+    main()
