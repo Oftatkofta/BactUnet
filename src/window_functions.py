@@ -1,238 +1,134 @@
 import numpy as np
-import math
+import logging
 
+# Set up logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def hann_window(height, width):
+def hanning_window(N):
     """
-    https://doi.org/10.1371/journal.pone.0229839
-    :param i: height in pixels
-    :param j: width in pixels
-    :return: nupy array of shape (i, j) of a Hann window
+    Generate a Hanning window.
+
+    Parameters:
+    N (int): Number of points in the window.
+
+    Returns:
+    numpy.ndarray: Hanning window of length N.
     """
-    out = np.empty((height, width), np.float32)
-    I = 2*math.pi/(height-1)
-    J = 2*math.pi/(width-1)
-    for i in range(height):
-        for j in range(width):
-            out[i,j] = 0.25 * (1-math.cos(I*i)) * (1-math.cos(J*j))
+    logging.debug("Generating Hanning window with N=%d", N)
+    return np.hanning(N)
 
-    return out
-
-def corner_hann_window(height, width):
+def hamming_window(N):
     """
-    :param i: height in pixels
-    :param j: width in pixels
-    :return: nupy array of shape (i, j) of a upper left corner Hann window
+    Generate a Hamming window.
+
+    Parameters:
+    N (int): Number of points in the window.
+
+    Returns:
+    numpy.ndarray: Hamming window of length N.
     """
-    out = np.empty((height, width), np.float32)
-    I = 2*math.pi/(height-1)
-    J = 2*math.pi/(width-1)
-    for i in range(height):
-        for j in range(width):
-            if (i <= height/2) and (j <= width/2):
-                out[i, j] = 1
-            elif (i > height/2) and (j < width/2):
-                out[i, j] = 0.5 * (1 - math.cos(I * i))
-            elif (i < height/2) and (j > width/2):
-                out[i,j] = 0.5 * (1 - math.cos(J*j))
-            else:
-                out[i,j] = 0.25 * (1-math.cos(I*i)) * (1-math.cos(J*j))
+    logging.debug("Generating Hamming window with N=%d", N)
+    return np.hamming(N)
 
-    return out
-
-
-
-def top_hann_window(height, width):
+def blackman_window(N):
     """
-    :param i: height in pixels
-    :param j: width in pixels
-    :return: nupy array of shape (i, j) of a upper edge Hann window
+    Generate a Blackman window.
+
+    Parameters:
+    N (int): Number of points in the window.
+
+    Returns:
+    numpy.ndarray: Blackman window of length N.
     """
-    out = np.empty((height, width), np.float32)
-    I = 2*math.pi/(height-1)
-    J = 2*math.pi/(width-1)
-    for i in range(height):
-        for j in range(width):
-            if (i < height/2):
-                out[i, j] = 0.5 * (1 - math.cos(J * j))
-            else:
-                out[i,j] = 0.25 * (1-math.cos(I*i)) * (1-math.cos(J*j))
+    logging.debug("Generating Blackman window with N=%d", N)
+    return np.blackman(N)
 
-    return out
-
-
-def corner_step_window(height, width):
+def kaiser_window(N, beta):
     """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a step window
+    Generate a Kaiser window.
+
+    Parameters:
+    N (int): Number of points in the window.
+    beta (float): Shape parameter of the Kaiser window.
+
+    Returns:
+    numpy.ndarray: Kaiser window of length N.
     """
-    out = np.zeros((height, width), np.float32)
-    out[0:int(height*0.75),0:int(width*0.75)] = 1
-    return out
+    logging.debug("Generating Kaiser window with N=%d and beta=%f", N, beta)
+    return np.kaiser(N, beta)
 
-def top_step_window(height, width):
+def bartlett_window(N):
     """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a step window
+    Generate a Bartlett window.
+
+    Parameters:
+    N (int): Number of points in the window.
+
+    Returns:
+    numpy.ndarray: Bartlett window of length N.
     """
-    out = np.zeros((height, width), np.float32)
-    out[0:int(height*0.75),int(width*0.25):int(width*0.75)]=1
-    return out
+    logging.debug("Generating Bartlett window with N=%d", N)
+    return np.bartlett(N)
 
-def center_step_window(height, width):
+def apply_window(data, window_type, **kwargs):
     """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a step window
+    Apply a window function to a given dataset.
+
+    Parameters:
+    data (numpy.ndarray): The data to which the window function is to be applied.
+    window_type (str): The type of window to apply ('hanning', 'hamming', 'blackman', 'kaiser', 'bartlett').
+    kwargs: Additional parameters for specific window types (e.g., 'beta' for 'kaiser').
+
+    Returns:
+    numpy.ndarray: The windowed data.
     """
-    out = np.zeros((height, width), np.float32)
-    out[int(height*0.25):int(height*0.75), int(width*0.25):int(width*0.75)]=1
-    return out
+    logging.debug("Applying window: %s", window_type)
+    # Ensure the data is a NumPy array
+    if not isinstance(data, np.ndarray):
+        raise TypeError("Input data must be a numpy.ndarray")
 
+    N = len(data)
+    logging.debug("Data length: %d", N)
 
-def corner_triangular_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a triangular window
-    """
-    out = np.zeros((height, width), np.float32)
-    I = 2/height
-    J = 2/width
-
-    for i in range(height):
-        for j in range(width):
-            if (i <= height/2) and (j >= width/2):
-                out[i, j] =  (1 - abs(J*j - 1))
-            elif (i <= height/2) and (j < width/2):
-                out[i, j] = 1
-            elif (i > height/2) and (j < width/2):
-                out[i, j] = (1 - abs(I * i - 1))
-
-            else:
-                out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
-
-    return out
-
-def top_triangular_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a triangular window
-    """
-    out = np.empty((height, width), np.float32)
-    I = 2/height
-    J = 2/width
-
-    for i in range(height):
-        for j in range(width):
-            if (i <= height/2):
-                out[i, j] =  (1 - abs(J*j - 1))
-            else:
-                out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
-
-    return out
-
-def triangular_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: height in pixels
-    :return: nupy array of shape (i, j) of a triangular window
-    """
-    out = np.empty((height, width), np.float32)
-    I = 2/height
-    J = 2/width
-
-    for i in range(height):
-        for j in range(width):
-            out[i,j] = (1-abs(I*i -1)) * (1 - abs(J*j - 1))
-
-    return out
-
-
-def bartley_hann_window(height, width):
-    """
-    :param i: height in pixels
-    :param j: width in pixels
-    :return: nupy array of shape (i, j) of a Bartley-Hann window
-    """
-    out = np.empty((height, width), np.float32)
-
-    a0 = 0.62
-    a1 = 0.48
-    a2 = 0.38
-
-    I = 2*math.pi/(height)
-    J = 2*math.pi/(width)
-
-    for i in range(height):
-        for j in range(width):
-            out[i,j] = (a0 + a1 * abs((i / height) - 0.5) - a2 * math.cos(I * i)) * (a0 + a1 * abs((j / width) - 0.5) - a2 * math.cos(J * j))
-
-    return out
-
-
-
-
-#def _maskgen_helper(i, j, n_side, window_type):
-    #returns correct window generator
-
-
-def build_weighted_mask_array(window_type, patch_size, n_side):
-    """
-    patches corner, top, and corner windows into one large array that can me used
-    as a weighted (or binary) mask.
-    
-    :parmam window_type: string
-    :param n_side: int, how many patches on the side
-    
-    :return: nupy array of shape (patch_sixe*n_side, patch_sixe*n_side) 
-    """
-
-    type_dict = {
-        'hann': [corner_hann_window, top_hann_window, hann_window],
-        'step': [corner_step_window, top_step_window, center_step_window],
-        'triangular': [corner_triangular_window, top_triangular_window, triangular_window]
+    # Dictionary mapping window types to their respective functions
+    window_functions = {
+        'hanning': hanning_window,
+        'hamming': hamming_window,
+        'blackman': blackman_window,
+        'kaiser': lambda N: kaiser_window(N, kwargs.get('beta', 14)),
+        'bartlett': bartlett_window
     }
-    assert (window_type in type_dict.keys()), "Window function not implemented or misspelled"
 
-
-    corner_function = type_dict[window_type][0]
-    edge_function = type_dict[window_type][1]
-    center_function = type_dict[window_type][2]
-
-    n_pix = n_side * patch_size
-    out = np.empty((n_pix, n_pix), dtype=np.float32)
-    for i in range(n_side):
-        for j in range(n_side):
-            if (i==0):
-                if (j==0):
-                    out[0:patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size),0)
-                elif  (j==(n_side-1)):
-                    out[0:patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size),3)
-                else:
-                    out[0:patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
-                        edge_function(patch_size, patch_size), 0)
-
-            elif (i==n_side-1):
-                if (j==0):
-                    out[i*patch_size:(i+1)*patch_size, 0:patch_size] = np.rot90(corner_function(patch_size, patch_size), 1)
-                elif (j==n_side-1):
-                    out[i*patch_size:(i+1)*patch_size, j*patch_size:(j+1)*patch_size] = np.rot90(corner_function(patch_size, patch_size), 2)
-                else:
-                    out[i*patch_size:(i+1)*patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
-                        edge_function(patch_size, patch_size), 2)
-            elif (j==0):
-                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
-                    edge_function(patch_size, patch_size), 1)
-            elif (j==(n_side-1)):
-                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = np.rot90(
-                    edge_function(patch_size, patch_size), 3)
-            else:
-                out[i * patch_size:(i + 1) * patch_size, j * patch_size:(j + 1) * patch_size] = center_function(patch_size, patch_size)
-
+    # Get the appropriate window function from the dictionary
+    if window_type not in window_functions:
+        raise ValueError(f"Unknown window type: {window_type}")
     
-    return out
+    # Generate the window using the selected function
+    window = window_functions[window_type](N)
+    logging.debug("Window generated: %s", window)
 
+    # Apply the window to the data element-wise
+    windowed_data = data * window
+    logging.debug("Windowed data: %s", windowed_data)
+    return windowed_data
+
+def main():
+    """
+    Main function to demonstrate the use of window functions.
+    """
+    # Generate sample data as a sine wave to better illustrate the effect of windowing
+    t = np.linspace(0, 1, 100)  # Generate 100 points between 0 and 1
+    data = np.sin(2 * np.pi * 5 * t)  # Generate a sine wave with frequency 5 Hz
+    logging.info("Generated sine wave data: %s", data)
+
+    # Apply Hanning window to the data
+    hanning_data = apply_window(data, 'hanning')
+    logging.info("Hanning window applied: %s", hanning_data)
+
+    # Apply Kaiser window with beta = 10 to the data
+    kaiser_data = apply_window(data, 'kaiser', beta=10)
+    logging.info("Kaiser window applied with beta=10: %s", kaiser_data)
+
+# Entry point of the script
+if __name__ == "__main__":
+    main()
