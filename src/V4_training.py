@@ -4,20 +4,23 @@ import tifffile as tiff
 import numpy as np
 from matplotlib import pyplot as plt
 from patchify import patchify
-from tensorflow import keras
 import logging
+
+from tensorflow import keras
+from keras.models import Model
+from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, BatchNormalization, Dropout, MaxPool2D, Concatenate
+from keras_unet_collection import losses
 
 # Import helper functions from preprocessing.py, window_functions.py, and helper_functions.py
 from preprocessing import patch_image, patch_stack, normalizePercentile, normalize_mi_ma, normalizeMinMax, checkEmptyMask
 from window_functions import hanning_window, hamming_window, blackman_window, kaiser_window, bartlett_window, apply_window
 from helper_functions import get_model_memory_usage
 
-
 # Set up logging configuration
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-pmin=0.1
-pmax=99.9
+pmin = 0.1
+pmax = 99.9
 
 # Check if GPU is available
 gpus = tf.config.list_physical_devices('GPU')
@@ -37,14 +40,11 @@ if gpu_device_name:
     print(f"GPU Device: {gpu_device_name}")
 else:
     print("No GPU device found.")
-    
 
 train_path = r"Bactnet/Training data/stacks"
 
 batch_size = 16
 SIZE = 288
-image_dataset = None
-mask_dataset = None
 
 def prepare_data(train_path, PATCH_SIZE, delete_empty=False, validation=False, seam=False):
     if validation:
@@ -52,64 +52,61 @@ def prepare_data(train_path, PATCH_SIZE, delete_empty=False, validation=False, s
     else:
         prefix = "training"
     
-    stacks = os.listdir(os.path.join(train_path, prefix+"_source"))
-    image_dataset = None
-    mask_dataset = None
+    stacks = os.listdir(os.path.join(train_path, prefix + "_source"))
+    image_dataset = []
+    mask_dataset = []
     for stack in stacks:
-        if (stack.split(".")[-1]=="tif"):
-            img = tiff.imread(os.path.join(train_path, prefix+"_source",stack))
-            mask = tiff.imread(os.path.join(train_path, prefix+"_target", stack))
+        if stack.endswith(".tif"):
+            img = tiff.imread(os.path.join(train_path, prefix + "_source", stack))
+            mask = tiff.imread(os.path.join(train_path, prefix + "_target", stack))
             
-            if seam: #should the eges be cropped?
-                half = int(PATCH_SIZE/2)
-                img = patch_stack(img[1:-1, half:-half, half:-half], PATCH_SIZE, DEPTH = 1)
-                mask =patch_stack(mask[: , half:-half, half:-half], PATCH_SIZE, DEPTH = 1)
+            # Patch the images and masks based on whether seam patches are needed
+            if seam:  # should the patches be created over the seams of the "standard"?
+                half = PATCH_SIZE // 2
+                img = patch_stack(img[1:-1, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
+                mask = patch_stack(mask[:, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
             else:
-                img = patch_stack(img[1:-1], PATCH_SIZE, DEPTH = 1)
-                mask =patch_stack(mask, PATCH_SIZE, DEPTH = 1)
+                img = patch_stack(img[1:-1], PATCH_SIZE, DEPTH=1)
+                mask = patch_stack(mask, PATCH_SIZE, DEPTH=1)
             
             print(stack, img.shape, mask.shape)
+            # Normalize the mask and image
             mask = normalizeMinMax(mask)
-            img = normalizePercentile(img, 0.1, 99.9, clip=True)
+            img = normalizePercentile(img, pmin, pmax, clip=True)
             
+            # Delete empty patches if specified
             if delete_empty:
                 not_ok_idxs = checkEmptyMask(mask)
                 mask = np.delete(mask, not_ok_idxs, axis=0)
                 img = np.delete(img, not_ok_idxs, axis=0)
                 print(stack, img.shape, mask.shape)
 
-            
+            image_dataset.append(img)
+            mask_dataset.append(mask)
 
-            if image_dataset is not None:
-                image_dataset = np.concatenate((image_dataset, img))
+    if image_dataset:
+        image_dataset = np.concatenate(image_dataset)
+    else:
+        image_dataset = np.array([])
 
-            if mask_dataset is not None:
-                mask_dataset = np.concatenate((mask_dataset, mask))
-
-            if image_dataset is None:
-                image_dataset = img
-
-            if mask_dataset is None:
-                mask_dataset = mask
-
-           #print(image_dataset.shape, mask_dataset.shape)
+    if mask_dataset:
+        mask_dataset = np.concatenate(mask_dataset)
+    else:
+        mask_dataset = np.array([])
 
     return image_dataset, mask_dataset
 
+# Prepare the training and testing datasets
 image_dataset, mask_dataset = prepare_data(train_path, SIZE, delete_empty=True, validation=False, seam=False)
 seam_data = prepare_data(train_path, SIZE, delete_empty=True, validation=False, seam=False)
 X_train = np.concatenate((image_dataset, seam_data[0]))
 y_train = np.concatenate((mask_dataset, seam_data[1]))
 
-#from sklearn.model_selection import train_test_split
-#X_train, X_test, y_train, y_test = train_test_split(image_dataset, mask_dataset, test_size = 0.15, random_state = 8)
 X_test, y_test = prepare_data(train_path, SIZE, delete_empty=True, validation=True, seam=False)
-
-
 
 print(X_train.shape, X_test.shape, y_train.shape, y_test.shape)
 
-#Sanity check, view few mages
+# Sanity check, view a few images
 import random
 
 image_number = random.randint(0, X_train.shape[0])
@@ -121,55 +118,57 @@ plt.subplot(122)
 plt.imshow(y_train[image_number, 0, :, :])
 plt.show()
 
-from keras.models import Model
-from keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, concatenate, Conv2DTranspose, BatchNormalization, Dropout, Lambda
-from keras.layers import Activation, MaxPool2D, Concatenate
-
-
 def conv_block(input, num_filters):
-    t = Conv2D(num_filters, 3, padding="same",  data_format="channels_first", activation='relu')(input)
+    # Convolutional block with two Conv2D layers followed by BatchNormalization and Dropout
+    t = Conv2D(num_filters, 3, padding="same", data_format="channels_first", activation='relu')(input)
     t = BatchNormalization()(t)
     t = Dropout(0.1)(t)
-    t = Conv2D(num_filters, 3, padding="same",  data_format="channels_first", activation='relu')(t)
+    t = Conv2D(num_filters, 3, padding="same", data_format="channels_first", activation='relu')(t)
     t = BatchNormalization()(t)
     t = Dropout(0.1)(t)
     return t
 
-#Encoder block: Conv block followed by maxpooling
-
+# Encoder block: Conv block followed by max pooling
 def encoder_block(input, num_filters):
     x = conv_block(input, num_filters)
     p = MaxPool2D((2, 2), data_format="channels_first")(x)
     return x, p
 
+# Decoder block: Upsampling followed by concatenation and conv block
 def decoder_block(input, skip_features, num_filters):
     x = Conv2DTranspose(num_filters, (2, 2), strides=2, padding="same", data_format="channels_first")(input)
     x = Concatenate(axis=1)([x, skip_features])
     x = conv_block(x, num_filters)
     return x
 
-#Build Unet using the blocks
+# Build Unet using the encoder and decoder blocks
 def build_unet(input_shape):
     inputs = Input(input_shape)
 
+    # Encoder path
     s1, p1 = encoder_block(inputs, 64)
     s2, p2 = encoder_block(p1, 128)
     s3, p3 = encoder_block(p2, 256)
     s4, p4 = encoder_block(p3, 512)
 
-    b1 = conv_block(p4, 1024) #Bridge
+    # Bridge
+    b1 = conv_block(p4, 1024)
 
+    # Decoder path
     d1 = decoder_block(b1, s4, 512)
     d2 = decoder_block(d1, s3, 256)
     d3 = decoder_block(d2, s2, 128)
     d4 = decoder_block(d3, s1, 64)
 
-    outputs = Conv2D(1, 1, padding="same", activation="sigmoid", data_format="channels_first")(d4)  #Binary (can be multiclass)
+    # Output layer with a sigmoid activation for binary segmentation
+    outputs = Conv2D(1, 1, padding="same", activation="sigmoid", data_format="channels_first")(d4)
 
     model = Model(inputs, outputs, name="BactUnet_single_frame_training")
     return model
 
-keras.backend.clear_session() # Free up RAM in case the model definition cells were run multiple times
+keras.backend.clear_session()  # Free up RAM in case the model definition cells were run multiple times
+
+sk_generator = mask_data_generator.flow(y_test, seed=seed, batch_size=batch_size)
 
 
 #from keras_unet_collection import models
