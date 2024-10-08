@@ -52,37 +52,36 @@ def prepare_data(train_path, PATCH_SIZE, delete_empty=False, validation=False, s
     else:
         prefix = "training"
     
-    stacks = os.listdir(os.path.join(train_path, prefix + "_source"))
+    stacks = [stack for stack in os.listdir(os.path.join(train_path, prefix + "_source")) if stack.endswith(".tif")]
     image_dataset = []
     mask_dataset = []
     for stack in stacks:
-        if stack.endswith(".tif"):
-            img = tiff.imread(os.path.join(train_path, prefix + "_source", stack))
-            mask = tiff.imread(os.path.join(train_path, prefix + "_target", stack))
-            
-            # Patch the images and masks based on whether seam patches are needed
-            if seam:  # should the patches be created over the seams of the "standard"?
-                half = PATCH_SIZE // 2
-                img = patch_stack(img[1:-1, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
-                mask = patch_stack(mask[:, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
-            else:
-                img = patch_stack(img[1:-1], PATCH_SIZE, DEPTH=1)
-                mask = patch_stack(mask, PATCH_SIZE, DEPTH=1)
-            
+        img = tiff.imread(os.path.join(train_path, prefix + "_source", stack))
+        mask = tiff.imread(os.path.join(train_path, prefix + "_target", stack))
+        
+        # Patch the images and masks based on whether seam patches are needed
+        if seam:  # should the patches be created over the seams of the "standard"?
+            half = PATCH_SIZE // 2
+            img = patch_stack(img[1:-1, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
+            mask = patch_stack(mask[:, half:-half, half:-half], PATCH_SIZE, DEPTH=1)
+        else:
+            img = patch_stack(img[1:-1], PATCH_SIZE, DEPTH=1)
+            mask = patch_stack(mask, PATCH_SIZE, DEPTH=1)
+        
+        print(stack, img.shape, mask.shape)
+        # Normalize the mask and image
+        mask = normalizeMinMax(mask)
+        img = normalizePercentile(img, pmin, pmax, clip=True)
+        
+        # Delete empty patches if specified
+        if delete_empty:
+            not_ok_idxs = checkEmptyMask(mask)
+            mask = np.delete(mask, not_ok_idxs, axis=0)
+            img = np.delete(img, not_ok_idxs, axis=0)
             print(stack, img.shape, mask.shape)
-            # Normalize the mask and image
-            mask = normalizeMinMax(mask)
-            img = normalizePercentile(img, pmin, pmax, clip=True)
-            
-            # Delete empty patches if specified
-            if delete_empty:
-                not_ok_idxs = checkEmptyMask(mask)
-                mask = np.delete(mask, not_ok_idxs, axis=0)
-                img = np.delete(img, not_ok_idxs, axis=0)
-                print(stack, img.shape, mask.shape)
 
-            image_dataset.append(img)
-            mask_dataset.append(mask)
+        image_dataset.append(img)
+        mask_dataset.append(mask)
 
     if image_dataset:
         image_dataset = np.concatenate(image_dataset)
@@ -166,27 +165,24 @@ def build_unet(input_shape):
     model = Model(inputs, outputs, name="BactUnet_single_frame_training")
     return model
 
-keras.backend.clear_session()  # Free up RAM in case the model definition cells were run multiple times
-
-sk_generator = mask_data_generator.flow(y_test, seed=seed, batch_size=batch_size)
-
-
-#from keras_unet_collection import models
-from keras_unet_collection import losses
-
+if keras.backend.is_keras_tensor(tf.constant(0)):  # Determine if clearing the session is necessary
+    keras.backend.clear_session()  # Free up RAM in case the model definition cells were run multiple times
 
 #########################################################
 
 # Build model
 def hybrid_loss(y_true, y_pred):
 
-    loss_focal = losses.focal_tversky(y_true, y_pred, alpha=0.3, gamma=4/3)
+    alpha = 0.3  # Parameter to control the balance of the loss
+    gamma = 4 / 3  # Parameter to control the focusing level of the loss
+
+    loss_focal = losses.focal_tversky(y_true, y_pred, alpha=alpha, gamma=gamma)
     loss_iou = losses.iou_seg(y_true, y_pred)
     
     # (x) 
     #loss_ssim = losses.ms_ssim(y_true, y_pred, max_val=1.0, filter_size=4)
     
-    return loss_focal+loss_iou #+loss_ssim
+    return loss_focal + loss_iou #+loss_ssim
 
 SIZE=288
 input_shape = (1, SIZE, SIZE)
@@ -198,6 +194,7 @@ model.compile(loss=hybrid_loss,
                 optimizer=keras.optimizers.Adam(learning_rate=1e-4), metrics=[losses.dice_coef, losses.iou_seg])
 model.summary()
 print(get_model_memory_usage(batch_size, model))
+
 
 #New generator with rotation and shear where interpolation that comes with rotation and shear are thresholded in masks. 
 #This gives a binary mask rather than a mask with interpolated values. 
