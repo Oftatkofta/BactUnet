@@ -1,230 +1,154 @@
-import os
-import pandas as pd
+# IOU Calculation
 import numpy as np
-import seaborn as sns
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
+import random
+from patchify import unpatchify
+import os
+import tifffile as tiff
+from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger
 
-val_dir = r"C:\Users\Jens\Documents\Code\BactUnet\_results\network_compare\validation"
-train_dir = r"C:\Users\Jens\Documents\Code\BactUnet\_results\network_compare\training"
+# Predict and calculate Intersection over Union (IoU) for different thresholds
+y_pred = model.predict(X_test)  # Predict the output for the test dataset
+IOUs = []  # List to store IoU scores
+dices = []  # List to store Dice coefficients
+thresh = []  # List to store threshold values
 
-def read_data(path, label):
-    out = pd.DataFrame()
-    #out_count = pd.DataFrame()
-    with os.scandir(path) as it:
-        for entry in it:
-            if entry.name.endswith('TP.csv'):
-                name = entry.name.split("_")
-                fname = name[0]+"_"+name[1]
-                network = name[2]
-                
-                tp_df = pd.read_csv(entry.path)
-                gt_df = pd.read_csv(path+"\\"+fname+"_GT_count.csv")
-                count_df = pd.read_csv(path+"\\"+fname+"_"+network+"_count.csv")
-                frames = np.array(count_df.index) + int(name[1])
-                count_df['frame'] =  frames
-                count_df['file'] = fname
-                count_df['network'] = network
-                count_df['dataset'] = label
-                count_df["TP"] = tp_df["Count"]
-                count_df["GT"] = gt_df["Count"]
-                count_df["FP"] = count_df["Count"] - count_df["TP"]
-                count_df["FN"] = count_df["GT"] - count_df["TP"]
-                count_df['precision'] = count_df['TP']/(count_df['TP']+count_df['FP'])
-                count_df['recall'] = count_df['TP']/(count_df['TP']+count_df['FN'])
-                count_df['average_precision'] = count_df['TP']/(count_df['TP']+count_df['FP']+count_df['FN'])
-                
-                #if counttype == 'TP':
-                #    out_TP = pd.concat([out_TP, df], ignore_index=True)
-                #else:
-                #    out_count = pd.concat([out_count, df], ignore_index=True)
-                out = pd.concat([out, count_df], ignore_index=True)
-        return out 
-
-alldata = pd.concat([read_data(val_dir, "validation"), read_data(train_dir, "train")], ignore_index=True)
-print(alldata.head(), alldata.shape)
-
-df = alldata.filter(items=['Count', 'Average Size','frame','file', 'network', 'dataset', 'TP', 'GT', 'FP','FN', 'precision', 'recall', 'average_precision'])
-df.head()
-
-print(df.network.unique())
-print(df.dataset.unique())
-print(df.file.unique())
-
-df.groupby(['file', 'dataset']).sum()
-
-plt.figure(figsize=(20,10))
-#g1 = sns.boxplot(data=df, x='file', y='average_precision', hue='network')
-#g2 = sns.boxplot(data=df, x='file', y='TP', hue='network')
-g3 = sns.boxplot(data=df, x='file', y='recall', hue='network', palette='Set2').set(title='Recall')
-
-plt.figure(figsize=(8,10))
-g3 = sns.violinplot(data=df, x='dataset', y='average_precision', hue='network', palette="Set2").set(title='Average Precision')
-
-plt.figure(figsize=(8,10))
-g3 = sns.violinplot(data=df, x='dataset',hue='network', y='precision', palette="Set2").set(title='Precision')
-
-plt.figure(figsize=(8,10))
-g3 = sns.violinplot(data=df, x='dataset',hue='network', y='recall', palette="Set2").set(title='Recall')
-
-df['F1-score'] = 2*df['precision']*df['recall']/(df['precision']+df['recall'])
-
-plt.figure(figsize=(8,10))
-g3 = sns.violinplot(data=df, x='dataset',hue='network', y='F1-score', palette="Set2").set(title='F1-score')
-
-count_compare = {}
-threshold = 0.5 
-
-def countmask(mask):
-    #counts contours in binary 3D-array
-    out=[]
-    for frame in range(len(mask)):
-        out.append(len(measure.find_contours(mask[frame])))
-    return out
-    
-    
-for stack in image_dict.keys():
-    count_compare[stack] = {}
-    mask_true = image_dict[stack]['y_true']>1
-    mask_single = image_dict[stack]["y_pred_single"][:,0,:,:]>threshold
-    mask_3frame = image_dict[stack]["y_pred_3frame"][:,0,:,:]>threshold
-    mask_empty = image_dict[stack]["y_pred_empty"][:,0,:,:]>threshold
-    
-    and_single = np.logical_and(mask_true, mask_single)
-    and_3frame = np.logical_and(mask_true, mask_3frame)
-    and_empty = np.logical_and(mask_true, mask_empty)
-    
-    single_and_3frame = np.logical_and(mask_single, mask_single)
-     
-    count_compare[stack]['frame'] = list(range(len(mask_true)))
-    count_compare[stack]['true'] = countmask(mask_true)
-    count_compare[stack]['single'] = countmask(mask_single)
-    count_compare[stack]['3frame'] = countmask(mask_3frame)
-    count_compare[stack]['empty'] = countmask(mask_empty)
-    count_compare[stack]['true_and_single'] = countmask(and_single)
-    count_compare[stack]['true_and_3frame'] = countmask(and_3frame)
-    count_compare[stack]['true_and_empty'] = countmask(and_empty)
-    count_compare[stack]['3frame_and_single'] = countmask(single_and_3frame)
-    
-count_df = None
-#print(count_compare)
-for stack in count_compare.keys():
-    df = pd.DataFrame.from_dict(count_compare[stack])
-    df['file'] = stack
-    
-    
-    if count_df is None:
-        count_df = df
-    
+# Iterate over thresholds from 0.0 to 1.0 in steps of 0.1
+for threshold in np.linspace(0, 1, 11):
+    y_pred_thresholded = y_pred > threshold  # Apply threshold to predictions
+    intersection = np.logical_and(y_test, y_pred_thresholded)  # Calculate intersection between predicted and ground truth masks
+    union = np.logical_or(y_test, y_pred_thresholded)  # Calculate union between predicted and ground truth masks
+    # Add check to avoid division by zero
+    if np.sum(union) == 0:
+        iou_score = 0.0
     else:
-        count_df = pd.concat([count_df, df], ignore_index=True)
-count_df.head()
+        iou_score = np.sum(intersection) / np.sum(union)  # Compute IoU score
+    # Calculate Dice coefficient with a check to avoid division by zero
+    dice_c = (2 * np.sum(intersection)) / (np.sum(y_test) + np.sum(y_pred_thresholded)) if (np.sum(y_test) + np.sum(y_pred_thresholded)) > 0 else 0
+    print("IoU score is: ", round(iou_score, 4), "Dice coeff is: ", round(dice_c, 4), "at threshold: ", threshold)
+    IOUs.append(iou_score)
+    thresh.append(threshold)
+    dices.append(dice_c)
 
-g1 = sns.boxplot(data=count_df, x='file', y='true_and_single', color='blue')
-g1 = sns.boxplot(data=count_df, x='file', y='true_and_3frame', color='yellow')
-g1 = sns.boxplot(data=count_df, x='file', y='true_and_empty', color='magenta')
+# Plot IoU and Dice coefficient vs. threshold
+plt.plot(thresh, IOUs, 'r', label='IOU')
+plt.plot(thresh, dices, 'b', label='Dice coeff')
+plt.title('IOU & Dice vs Threshold')
+plt.xlabel('Threshold')
+plt.ylabel('IOU')
+plt.legend()
+plt.show()
 
-count_df['TP_fraction_single'] = count_df['true_and_single']/count_df['true']
-count_df['TP_fraction_3frame'] = count_df['true_and_3frame']/count_df['true']
-count_df['TP_fraction_empty'] = count_df['true_and_empty']/count_df['true']
+#######################################################################
+# Predict on a few images
+idx = np.random.choice(len(X_test))  # Randomly select an index from the test set
 
-count_df['FP_fraction_single'] = (count_df['single']-count_df['true_and_single'])/count_df['single']
-count_df['FP_fraction_3frame'] = (count_df['3frame']-count_df['true_and_3frame'])/count_df['3frame']
-count_df['FP_fraction_empty'] = (count_df['empty']-count_df['true_and_empty'])/count_df['empty']
+plt.figure(figsize=(16, 8))
+plt.subplot(131)
+plt.title('Testing Image')
+plt.imshow(X_test[idx, 1, :, :])  # Display the test image
+plt.subplot(132)
+plt.title('Testing Label')
+plt.imshow(y_test[idx, 0, :, :])  # Display the corresponding ground truth label
+plt.subplot(133)
+plt.title('Prediction on Test Image')
+plt.imshow(y_pred[idx, 0, :, :])  # Display the predicted mask
+plt.tight_layout()
+plt.show()
 
-plt.figure(figsize=(20,10))
-g1 = sns.boxplot(data=count_df, x='file', y='TP_fraction_single', color='white')
-g1 = sns.boxplot(data=count_df, x='file', y='TP_fraction_3frame', color='blue')
-g1 = sns.boxplot(data=count_df, x='file', y='TP_fraction_empty', color='green')
+# Plot training and validation loss
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
+plt.plot(epochs, loss, 'y', label='Training loss')
+plt.plot(epochs, val_loss, 'r', label='Validation loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
 
+# Plot training and validation accuracy
+acc = history.history.get('dice_coef', [0] * len(epochs))  # Placeholder for Dice coefficient
+val_acc = history.history.get('val_dice_coef', [0] * len(epochs))
+plt.plot(epochs, acc, 'y', label='Training Accuracy')
+plt.plot(epochs, val_acc, 'r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
 
-#Let's reformat the dataframe for easier plottting
+#######################################################################
+# Define helper functions for unpatching predictions
 
-count_df.head()
+def _createOutArr(shape, nrows, ncols, nchannels):
+    # Calculate the output array dimensions based on the patch shape and number of rows/columns
+    out_height = int(nrows * shape[-2])
+    out_width = int(ncols * shape[-1])
+    out_frames = int(shape[0] / (nrows * ncols))
+    outshape = (out_frames, nchannels, out_height, out_width)
+    out_arr = np.zeros(outshape, dtype=np.float32)  # Use np.zeros to avoid uninitialized memory
+    return out_arr
 
-single = count_df.filter(items=['file', 'frame'])
-single['model'] = 'single_frame'
-single['TP'] = count_df['true_and_single']
-single['FN'] = count_df['true']-count_df['true_and_single']
-single['FP'] = count_df['single']-count_df['true_and_single']
+def unpatcher(arr, nrows, ncols, nchannels=1):
+    # Reconstruct the original image from patches
+    out_arr = _createOutArr(arr.shape, nrows, ncols, nchannels)
+    patch_h = arr.shape[-2]  # Height of each patch
+    patch_w = arr.shape[-1]  # Width of each patch
+    n = 0
+    for frame in range(out_arr.shape[0]):
+        for i in range(nrows):
+            for j in range(ncols):
+                y = patch_h * i  # Calculate the y-coordinate for placing the patch
+                x = patch_w * j  # Calculate the x-coordinate for placing the patch
+                out_arr[frame, :, y:y+patch_h, x:x+patch_w] = arr[n]  # Place the patch in the correct position
+                n += 1
+    return out_arr
 
-multi = count_df.filter(items=['file', 'frame'])
-multi['model'] = '3_frame'
-multi['TP'] = count_df['true_and_3frame']
-multi['FN'] = count_df['true']-count_df['true_and_3frame']
-multi['FP'] = count_df['3frame']-count_df['true_and_3frame']
+#######################################################################
+# Load unseen data and predict
+validation_image_directory = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\Bactnet\Training data\stacks\predict"
+result_folder = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\_results"
 
-empty = count_df.filter(items=['file', 'frame'])
-empty['model'] = 'empty'
-empty['TP'] = count_df['true_and_empty']
-empty['FN'] = count_df['true']-count_df['true_and_empty']
-empty['FP'] = count_df['empty']-count_df['true_and_empty']
+# Load images from the validation directory
+images = [img for img in os.listdir(validation_image_directory) if img.split('.')[-1].lower() == 'tif']  # Filter non-empty stacks
 
-tp_df = pd.concat([single, multi, empty], ignore_index=True)
+for i, image_name in enumerate(images):
+    image = tiff.imread(os.path.join(validation_image_directory, image_name))  # Load the image using tifffile
+    original_shape = image.shape  # Save the original shape for later use
+    patch = patch_stack(image, SIZE)  # Break the image into patches
+    patch = normalizePercentile(patch, 0.1, 99.9, clip=True)  # Normalize the patches using percentile-based normalization
+    pred_mask_patch = model.predict(patch, batch_size=16)  # Predict the mask for each patch with parameterized batch size
+    print(image_name, original_shape, patch.shape, pred_mask_patch.shape)
+    image = np.expand_dims(patch[:, 1, :, :], axis=1)  # Expand dimensions for concatenation
+    patch = np.concatenate((image, pred_mask_patch), axis=1)  # Concatenate the original and predicted masks
+    unpatched = unpatcher(patch, 8, 8, 2)  # Reconstruct the original image from patches
+    # Save the unpatched result as a TIFF file
+    tiff.imwrite(os.path.join(result_folder, image_name), unpatched, imagej=True, resolution=(1./2.6755, 1./2.6755),
+                  metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
 
-tp_df.head()
-tp_df.to_csv('single_3frame_empty_count.csv') 
+# Let's try the full movies
 
-plt.figure(figsize=(20,10))
-g3 = sns.boxplot(data=tp_df, x='file', y='recall', hue='model')
+image_directory = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\Bactnet"
+result_folder = r"C:\Users\analyst\Documents\Python Scripts\BactUnet\_results"
+filelist = []
 
-plt.figure(figsize=(20,10))
-g3 = sns.boxplot(data=tp_df, x='file', y='average_precision', hue='model')
-
-plt.figure(figsize=(5,10))
-g3 = sns.violinplot(data=tp_df, x='model', y='FN')
-
-tp_df['F1-score'] = 2*tp_df['precision']*tp_df['recall']/(tp_df['precision']+tp_df['recall'])
-
-plt.figure(figsize=(20,10))
-g3 = sns.boxplot(data=tp_df, x='file', y='F1-score', hue='model')
-
-keras.backend.clear_session()
-stride = 2
-
-# #IOU
-for stack in ogm3_data.keys():
-    y_pred1 = None
-    y_pred2 = None
-    y_pred3 = None
-    
-    img_stack = ogm3_data[stack]
-    for i in range(0, len(img_stack["image_patch"]), stride):
-        pred_si = model_single.predict(np.expand_dims(img_stack["image_patch"][i:i+stride,1,:,:], axis=1))
-        pred_3f = model_3frame.predict(img_stack["image_patch"][i:i+stride])
-        pred_empt = model_empty.predict(img_stack["image_patch"][i:i+stride])
-        if y_pred1 is not None:
-            y_pred1 = np.concatenate((y_pred1, pred_si))
-            y_pred2 = np.concatenate((y_pred2, pred_3f))
-            y_pred3 = np.concatenate((y_pred3, pred_empt))
-
-        if y_pred1 is None:
-            y_pred1 = pred_si
-            y_pred2 = pred_3f
-            y_pred3 = pred_empt
-    
-    ogm3_data[stack]["y_pred_single"] = unpatch_stack(y_pred1, 8, 8, 1)
-    ogm3_data[stack]["y_pred_3frame"] = unpatch_stack(y_pred2, 8, 8, 1)
-    ogm3_data[stack]["y_pred_empty"] = unpatch_stack(y_pred3, 8, 8, 1)
-    print(stack, ogm3_data[stack]["y_pred_single"].shape, ogm3_data[stack]["y_pred_3frame"].shape, ogm3_data[stack]["y_pred_empty"].shape)
-    
-
-threshold = 0.5
-
-for stack in ogm3_data.keys():
-    pred_si = (ogm3_data[stack]["y_pred_single"]>threshold)*255
-    pred_3f = (ogm3_data[stack]["y_pred_3frame"]>threshold)*255
-    pred_empty = (ogm3_data[stack]["y_pred_empty"]>threshold)*255
-    
-    saveme = np.concatenate((np.expand_dims(ogm3_data[stack]["y_true"],axis=1), pred_si, pred_3f, pred_empty), axis=1)
-    saveme = saveme.astype('uint8')
-    prefix="V4_compare"
-    dic = unpatch_stack(ogm3_data[stack]["image_patch"], 8, 8, 3)
-    dic = dic[:,1,:,:] * 255
-    dic = np.expand_dims(dic, axis=1).astype('uint8')
-    print(dic.shape, ogm3_data[stack]["image_patch"].max())
-    saveme = np.concatenate((dic, saveme), axis=1)
-    tiff.imwrite(os.path.join(r"C:\Users\Jens\Documents\Code\BactUnet\Bactnet\Training data\stacks\predict", "OGM3.tif"), saveme, imagej=True,
-                      metadata={'unit': 'um', 'finterval': 15,
-                                'axes': 'TCYX'})
-
-                                
+for dir in os.listdir(image_directory):
+    for file in os.listdir(os.path.join(image_directory, dir)):
+        if ".tif" in file:
+            loadme = os.path.join(image_directory, dir, file)
+            image = tiff.imread(loadme)
+            original_shape = image.shape
+            patch = patch_stack(image, SIZE)
+            patchlist = np.array_split(patch, 238)  # Use np.array_split for better performance and clarity
+            
+            for i, p in enumerate(patchlist):
+                p = normalizePercentile(p, 0.1, 99.9, clip=True)
+                pred_mask_patch = model.predict(p, batch_size=16)  # Predict with parameterized batch size
+                unpatched = unpatcher(pred_mask_patch, 8, 8, 1)
+                savename = file.split(".")[0]+ "_V3_" + str(i+1) + ".tif"
+                print(savename, unpatched.shape)
+                tiff.imwrite(os.path.join(result_folder, savename), unpatched, imagej=True, resolution=(1./2.6755, 1./2.6755),
+                             metadata={'unit': 'um', 'finterval': 15, 'axes': 'TCYX'})
