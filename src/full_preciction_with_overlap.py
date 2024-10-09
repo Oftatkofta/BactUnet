@@ -24,6 +24,7 @@ def test_gpu_access():
 print('TensorFlow {}; Keras {}'.format(tf.__version__, keras.__version__))
 
 # Load pretrained models, one using 3 frames and one using single frames
+keras.backend.clear_session()  # Clear any existing models in memory to avoid conflicts
 model_3frame = keras.models.load_model("models/bactunet_V4_3frame.hdf5", compile=False)
 model_single_frame = keras.models.load_model("models/bactunet_V4_single_frame.hdf5", compile=False)  # for frames 0 & 239
 
@@ -43,7 +44,7 @@ def predict_array(arr, is_padded=False):
     """
     if is_padded:
         arr = pad_stack(arr, SIZE)
-        pad_SIZE = int(SIZE / 2)
+        pad_SIZE = SIZE // 2
     
     dic_arr_patch = patch_stack(arr, SIZE)
     first_frame_patch = patch_image(arr[0], SIZE)
