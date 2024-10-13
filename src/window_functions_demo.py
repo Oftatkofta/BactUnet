@@ -51,54 +51,48 @@ def demo_2d_kaiser_window():
     plt.show()
 
 def main():
-    # Define patch sizes
-    patch_sizes = [(8, 8), (288, 288)]
+    # Generate sample data: a sine wave with 100 data points
+    t = np.linspace(0, 1, 100)  # Generate 100 points between 0 and 1 (time vector)
+    data = np.sin(2 * np.pi * 5 * t)  # Create a sine wave with a frequency of 5 Hz
 
-    for patch_size in patch_sizes:
-        # Generate sample data: a 2D sine wave
-        x = np.linspace(0, 1, patch_size[0])
-        y = np.linspace(0, 1, patch_size[1])
-        X, Y = np.meshgrid(x, y)
-        data = np.sin(2 * np.pi * 5 * X) * np.sin(2 * np.pi * 5 * Y)
+    # Create a figure with subplots to plot original and windowed data
+    fig, axs = plt.subplots(3, 2, figsize=(12, 10))  # Create a 3x2 grid of subplots
+    axs = axs.flatten()  # Flatten the array of axes for easy iteration
 
-        # Create a figure with subplots to plot original and windowed data
-        fig, axs = plt.subplots(3, 3, figsize=(15, 15))
-        axs = axs.flatten()
+    # Plot original data
+    axs[0].plot(t, data, label='Original Data')  # Plot the original sine wave
+    axs[0].set_title('Original Sine Wave')  # Set the title for the subplot
+    axs[0].set_xlabel('Time')  # Label the x-axis
+    axs[0].set_ylabel('Amplitude')  # Label the y-axis
+    axs[0].legend()  # Add a legend to the plot
 
-        # Plot original data
-        im = axs[0].imshow(data, cmap='viridis')
-        axs[0].set_title(f'Original {patch_size[0]}x{patch_size[1]} Patch')
-        fig.colorbar(im, ax=axs[0])
+    # Apply different windows and plot the results
+    windows = {
+        'hanning': hanning_window,
+        'hamming': hamming_window,
+        'blackman': blackman_window,
+        'kaiser': kaiser_window_fixed,
+        'bartlett': bartlett_window
+    }
 
-        # Apply different windows and plot the results
-        windows = {
-            'hanning': hanning_window,
-            'hamming': hamming_window,
-            'blackman': blackman_window,
-            'kaiser': kaiser_window,
-            'bartlett': bartlett_window,
-            'kaiser_fixed': kaiser_window_fixed,
-            'rectangular': lambda x: np.ones(x),
-            'triangular': lambda x: np.bartlett(x)
-        }
+    # Iterate over each window type and apply it to the sine wave
+    for i, (window_type, window_func) in enumerate(windows.items(), start=1):
+        window = window_func(len(data))  # Generate the window using the appropriate function
+        windowed_data = apply_window(data, window_type, beta=5 if window_type == 'kaiser' else None)  # Apply the window to the data
+        
+        # Plot the windowed data in the corresponding subplot
+        axs[i].plot(t, windowed_data, label=f'{window_type.capitalize()} Windowed Data')
+        axs[i].set_title(f'{window_type.capitalize()} Window Applied to Sine Wave')  # Set the title for the subplot
+        axs[i].set_xlabel('Time')  # Label the x-axis
+        axs[i].set_ylabel('Amplitude')  # Label the y-axis
+        axs[i].legend()  # Add a legend to the plot
 
-        # Iterate over each window type and apply it to the data
-        for i, (window_type, window_func) in enumerate(windows.items(), start=1):
-            if window_type == 'kaiser':
-                window = window_func(patch_size[0], patch_size[1], beta=5)
-            elif window_type in ['rectangular', 'triangular']:
-                window = np.outer(window_func(patch_size[0]), window_func(patch_size[1]))
-            else:
-                window = np.outer(window_func(patch_size[0]), window_func(patch_size[1]))
-            
-            windowed_data = data * window
-            
-            im = axs[i].imshow(windowed_data, cmap='viridis')
-            axs[i].set_title(f'{window_type.capitalize()} Window')
-            fig.colorbar(im, ax=axs[i])
+    # Add a call to the 2D Kaiser window demo
+    demo_2d_kaiser_window()
 
-        plt.tight_layout()
-        plt.show()
+    # Adjust layout to prevent overlapping elements and show all plots simultaneously
+    plt.tight_layout()
+    plt.show()
 
     # Add a call to the 2D Kaiser window demo
     demo_2d_kaiser_window()
